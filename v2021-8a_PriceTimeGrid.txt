@@ -1,0 +1,844 @@
+// v2021-8a_PriceTimeGrid
+// 10/03.2025
+
+//@version=5
+
+
+
+
+
+
+//=++==============================================================++=
+//=++==============================================================++=
+//=++==============================================================++=
+// !!! добавить: нормирование цены
+// !!! реализовать вариант с числом без перевода в строку
+num_round(float v, int len) =>
+    string str = str.tostring(v)
+    aStr = str.split(str, ".")
+    string str_ = ""
+    nS = array.size(aStr)
+    if(nS > 0)
+        for i = 0 to nS-1
+            str_ := str_ + array.get(aStr, i)
+    str_ := str.tostring(str.tonumber(str_))
+    str_ := str.substring(str_, 0, len) + (len <= str.length(str_) ? "." + str.substring(str_, len) : "")
+    str.tonumber(str_)
+
+
+
+
+
+
+//=++==============================================================++=
+//=++==============================================================++=
+//=++==============================================================++=
+type objPerc
+    float perc // процент (коэффициент)
+    color clr // цвет, прозрачность
+    string name // название дроби
+    float p = -1 // цена
+    int t = -1 // время
+
+
+var _aPerc_Price_Ray = array.new<objPerc>() // массив процентов коробки (цена/лучи)
+var _aPerc_Price_Line = array.new<objPerc>() // массив процентов коробки (цена/линии)
+var _aPerc_Time_Ray = array.new<objPerc>() // массив процентов коробки (время/лучи)
+var _aPerc_Time_Line = array.new<objPerc>() // массив процентов коробки (время/линии)
+
+
+//=++==============================================================++=
+type objRay
+    int x1
+    float y1
+    int x2
+    float y2
+    int k // номер массива процентов
+                
+
+var _aRay_C1_Price = array.new<objRay>() // массив лучей "угол 1"
+var _aRay_C2_Price = array.new<objRay>() // массив лучей "угол 2"
+var _aRay_C3_Price = array.new<objRay>() // массив лучей "угол 3"
+var _aRay_C4_Price = array.new<objRay>() // массив лучей "угол 4"
+
+var _aRay_C1_Time = array.new<objRay>() // массив лучей "угол 1"
+var _aRay_C2_Time = array.new<objRay>() // массив лучей "угол 2"
+var _aRay_C3_Time = array.new<objRay>() // массив лучей "угол 3"
+var _aRay_C4_Time = array.new<objRay>() // массив лучей "угол 4"
+
+var _aRay_H = array.new<objRay>() // массив лучей "горизонтальные"
+var _aRay_V = array.new<objRay>() // массив лучей "вертикальные"
+
+var _aLine_Ray_C1 = array.new<line>()
+var _aLine_Ray_C2 = array.new<line>()
+var _aLine_Ray_C3 = array.new<line>()
+var _aLine_Ray_C4 = array.new<line>()
+var _aLine_Ray_H = array.new<line>()
+var _aLine_Ray_V = array.new<line>()
+
+
+//=++==============================================================++=
+type objBox
+    bool  isLong // направление: Long/Short
+    bool  isSwing // методика расчёта: Time/Swing
+
+    int   tStart0 // Time: время угла 0
+    int   tLen // Time: длина по времени (бары)
+    float pLen // Time: длина по цене
+
+    int   numSwing0 // номер 0-го свинга
+    int   shiftSwing1 // смещение 1-го свинга, min.=0
+    int   coefPrice1 // смещение 1-го угла по цене: коэф (=1 100%, =2 200%, ...)
+
+    bool isBase // включены основные лучи, т.е. есть проценты 0,100
+
+//    int   tStart // время точки старта
+    float pStart // цена точки старта, <0 по свингу
+//    int   numSwing0 // номер свинга
+//    int   shiftSwing1 // смещение 2-го свинга, min.=0
+//    bool  isLong // направление
+//    int   coef2 // угол 2, цена: коэф (=1 100%, =2 200%, ...)
+//    int   tLen // длина по времени (бары)
+//    float pLen // длина по цене
+
+    bool is02 = false // построен луч 0-2
+    bool is13 = false // построен луч 1-3
+    int coef = 1 // коэффициент направления
+    bool isBox = false // признак, что коробка определена 
+    bool isBoxR = false // признак, что лучи коробки определены
+    int num = 0 // номер пространства
+
+    float p0 = -1 // цена коробки
+    float p1 = -1
+    int t0 = -1 // время коробки
+    int t3 = -1
+    float dp = -1 // длина по цене
+    int dt = -1 // длина по времени (бары)
+
+
+// --- расчёт размеров коробки -- Методика расчёта: Swing
+method set_Box_Swing(objBox this, array<float> Extrems, array<int> iExtrems, int _numSwing) =>
+    if(_numSwing == this.numSwing0+2+this.shiftSwing1) // _numSwing0 формирующийся свинг
+        int nE = array.size(Extrems)
+        if(nE > 1)
+            this.coef := this.isLong ? 1 : -1
+
+            this.p0 := array.get(Extrems, nE-(3+this.shiftSwing1))
+            this.p1 := array.get(Extrems, nE-2)
+            for j = 0 to this.shiftSwing1
+                p = array.get(Extrems, nE-(2+j))
+                if(this.isLong)
+                    if(p > this.p1)
+                        this.p1 := p
+                else
+                    if(p < this.p1)
+                        this.p1 := p
+
+            this.dp := math.abs(this.p1 - this.p0)
+            this.p1 := this.p1 + this.coef * (this.coefPrice1-1) * this.dp
+            this.dp := math.abs(this.p1 - this.p0)
+
+            this.t0 := array.get(iExtrems, nE-(3+this.shiftSwing1))
+            this.t3 := array.get(iExtrems, nE-2)
+
+            this.dt := this.t3 - this.t0
+
+            this.isBox := true
+
+
+method set_Box_Swing_New(objBox this, int _bar_index) =>
+    if(this.t3 >= 0)// and this.t3 < _bar_index)
+        this.t3 := (this.num==0 ? this.t0 : this.t3) + this.dt
+
+        this.num := this.num+1
+
+        this.isBoxR := false
+
+
+method set_Box_Free(objBox this, int _time, int _bar_index) =>
+    if(_time >= this.tStart0)
+        float p = this.pStart
+        int t = _bar_index
+
+        this.coef := this.isLong ? 1 : -1
+
+        this.p0 := p
+        this.p1 := p + this.coef * this.pLen
+
+        this.t0 := t
+        this.t3 := t + this.tLen
+
+        this.isBox := true
+
+
+// --- расчёт процентов по сторонам коробки
+method set_Box_2(objBox this, array<objPerc> aPerc, bool _isP, bool _isT) =>
+    if(this.isBox)
+        float pDelta = math.abs(this.p1 - this.p0)
+        int tDelta = this.t3 - this.t0
+
+        int nP = array.size(aPerc)
+        for j = 0 to nP-1
+            op = objPerc.new()
+            op := array.get(aPerc, j)
+
+            if(_isP)
+                op.p := this.p0 + this.coef * pDelta * op.perc
+            if(_isT)    
+                op.t := this.t0 + math.round(tDelta * op.perc)
+
+            array.set(aPerc, j, op)
+
+
+// --- получение лучей коробки
+method set_Ray(objBox this, array<objPerc> aPerc, array<objRay> aRay, int x1, float y1, int x2, float y2, int mode) =>
+    int nP = array.size(aPerc)
+    if(nP > 0)
+        bool isRay0 = this.isBase
+        bool isRay100 = this.isBase
+        if(this.isBase)
+            switch mode
+                0 =>
+                    isRay0 := false
+                    isRay100 := (not this.is02)
+                    this.is02 := true
+                1 =>
+                    isRay0 := (not this.is13)
+                    isRay100 := false
+                    this.is13 := true
+                2 =>
+                    isRay0 := (not this.is02)
+                    isRay100 := false
+                    this.is02 := true
+                3 =>
+                    isRay0 := false
+                    isRay100 := (not this.is13)
+                    this.is13 := true
+
+        for j = 0 to nP-1
+            op = objPerc.new()
+            op := array.get(aPerc, j)
+
+            bool isPT = true
+            if(op.perc == 0)
+                isPT := isRay0
+            if(op.perc == 1)
+                isPT := isRay100
+
+            if(isPT)
+                if(mode <= 3)
+                    if(isPT)// and op.p >= 0)
+                        array.push(aRay, objRay.new(x1, y1, x2, op.p, j))
+                    if(isPT and op.t >= 0)
+                        array.push(aRay, objRay.new(x1, y1, op.t, y2, j))
+                else if(mode == 4)// and op.p >= 0) // горизонтальные
+                    array.push(aRay, objRay.new(x1, op.p, x2, op.p, j))
+                else if(mode ==5 and op.t >= 0) // вертикальные
+                    array.push(aRay, objRay.new(op.t, y1, op.t, y2, j))
+
+
+//// --- отрисовка лучей коробки
+Ray(array<objPerc> aPerc, array<objRay> aRay, array<line> aLine, string ray_extend, string ray_style) =>
+    int nR = array.size(aRay)
+    if(nR > 0)
+        for j = 0 to nR-1
+            ora = objRay.new()
+            ora := array.get(aRay, j)
+
+            op = objPerc.new()
+            op := array.get(aPerc, ora.k)
+
+            array.push(aLine, line.new(ora.x1, ora.y1, ora.x2, ora.y2, extend=ray_extend, color=op.clr, style=ray_style, width=1))
+
+
+//// --- отработка реакции от луча
+Cross(array<objRay> aRay, float atr, int not_reach, int break_through) =>
+    is_l = false
+    is_h = false
+
+    bi = 8508
+    //if(bar_index == bi)
+    //    log.error("a bar_index="+str.tostring(bar_index))
+
+    int nR = array.size(aRay)
+    if(nR > 0)
+        dp_not_reach = atr * not_reach / 100.0
+        dp_break_through = atr * break_through / 100.0
+
+        min_oc = math.min(open, close)
+        max_oc = math.max(open, close)
+
+        //if(bar_index == bi)
+        //    log.error("b1 nR="+str.tostring(nR)+" min_oc="+str.tostring(min_oc)+" max_oc="+str.tostring(max_oc))
+        //    log.error("b2 atr="+str.tostring(atr)+" ="+str.tostring(dp_not_reach)+" ="+str.tostring(dp_break_through))
+
+        for j = 0 to nR-1
+            ora = objRay.new()
+            ora := array.get(aRay, j)
+
+            if(ora.x1 == ora.x2)
+                continue
+            
+            p = (ora.y1 == ora.y2) ? ora.y1 : (ora.y2 - ora.y1) / (ora.x2 - ora.x1) * (bar_index - ora.x1) + ora.y1
+            dl = p - low
+            dh = high - p
+
+            //if(bar_index == bi)// and j == 2)
+            //    log.error("c1 j="+str.tostring(j)+" p="+str.tostring(p)+" dl="+str.tostring(dl)+" dh="+str.tostring(dh))
+            //    log.error("c2 ="+str.tostring((min_oc >= p)?1:0)+" "+str.tostring((dl >= 0)?1:0)+" "+str.tostring((dl <= dp_break_through)?1:0)+" "+str.tostring((dl <= 0)?1:0)+" "+str.tostring((-1*dl <= dp_not_reach)?1:0))
+            //    log.error("c3 ="+str.tostring(((dl >= 0 and dl <= dp_break_through))?1:0)+" "+str.tostring((dl <= 0 and -1*dl <= dp_not_reach)?1:0))
+            //    log.error("c4 ="+str.tostring((max_oc <= p)?1:0)+" "+str.tostring((dh >= 0)?1:0)+" "+str.tostring((dh <= dp_break_through)?1:0)+" "+str.tostring((dh <= 0)?1:0)+" "+str.tostring((-1*dh <= dp_not_reach)?1:0))
+            //    log.error("c5 ="+str.tostring(((dh >= 0 and dh <= dp_break_through))?1:0)+" "+str.tostring((dh <= 0 and -1*dh <= dp_not_reach)?1:0))
+
+            if(min_oc >= p)
+                if((dl >= 0 and dl <= dp_break_through) or (dl <= 0 and -1*dl <= dp_not_reach))
+                    is_l := true
+
+            if(max_oc <= p)
+                if((dh >= 0 and dh <= dp_break_through) or (dh <= 0 and -1*dh <= dp_not_reach))
+                    is_h := true
+
+            //if(bar_index == bi)// and j == 2)
+            //    log.error("d j="+str.tostring(j)+" is_l="+str.tostring(is_l?1:0)+" is_h="+str.tostring(is_h?1:0))
+
+            if(is_l and is_h)
+                break
+
+    //if(bar_index == bi)
+    //    log.error("e is_l="+str.tostring(is_l?1:0)+" is_h="+str.tostring(is_h?1:0))
+
+    [is_l, is_h]
+
+
+//// --- удаление лучей коробки
+Line_Ray_Delete(array<line> aLine) =>
+    int nL = array.size(aLine)
+    if(nL > 0)
+        for j = 0 to nL-1
+            id = array.get(aLine, j)
+            line.delete(id)
+        array.clear(aLine)
+
+
+
+
+
+
+//=++==============================================================++=
+//=++==============================================================++=
+//=++==============================================================++=
+indicator(title="8a_PriceTimeGrid", precision=2, overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=500)
+
+
+_minCorrection_percent= 0 //input.float(defval=0, title="minCorrection_percent", minval=0)  // минимальный размер коррекции относительно прыдыдущей волны
+
+_minSwing_bars= input.int(defval=3, title="minSwing_bars", minval=0)
+
+_minSwingSize_ATR_percent= input.float(defval=300, title="minSwing_ATR_percent", minval=0)  // минимальный размер свинга в % ATR
+
+_ATR_period= input.int(defval=14, title="ATR_period", minval=0)  // период ATR
+
+//=++==============================================================++=
+_isShow_numSwing= input.bool(defval=true, title="Показать: Номер свинга")
+_isShow_P= input.bool(defval=false, title="Показать: Цена")
+_isShow_dP= input.bool(defval=false, title="Показать: Расстояние")
+_isShow_dPerc= input.bool(defval=false, title="Показать: Проценты")
+_isShow_dT= input.bool(defval=false, title="Показать: Время")
+_isShow_S= input.bool(defval=false, title="Показать: Скорость")
+
+var bool _isShow= (_isShow_numSwing or _isShow_P or _isShow_dP or _isShow_dT or _isShow_S)
+
+var _Space= 25 // (процент от ATR) Отступ от цены high/low надписи
+float _shift_HL= ta.atr(21) * _Space / 100.0
+
+//=++==============================================================++=
+_isShow_Box = input.bool(defval=true, title="Коробка: Показать")
+_isShow_Box_P = input.bool(defval=true, title="Коробка: Показать параметры")
+_isShow_Box_Perc = input.bool(defval=true, title="Коробка: Показать шкалу процентов")
+
+_Box_ID = input.string(defval="BOX #4", title="Коробка: ID конфигурации (при алерте)")
+
+_Box_Direction = input.string(defval="Short", title="Коробка: Направление", options=["Long", "Short"])
+_Box_Calc = input.string(defval="Swing", title="Коробка: Методика расчёта", options=["Time", "Swing"])
+
+_Box_tStart0 = input.time(defval=timestamp("13 Mar 2024 10:00:00 GMT+3"), title="Коробка/Time: Время угла 0")
+_Box_tLen_shiftSwing1 = input.int(defval=1, title="Коробка/Time: длина по времени (бары) /Swing: Смещение 1-го свинга", minval=0)
+_Box_pLen_coefPrice1 = input.float(defval=2.0, title="Коробка/Time: длина по цене /Swing: Смещение 1-го угла по цене: коэф (=1 100%, =2 200%, ...)", minval=0)
+
+_Box_numSwing0 = input.int(defval=408, title="Коробка/Swing: Номер 0-го свинга", minval=0)
+
+_Box_numPr_Time = input.int(defval=1, title="Коробка: Номер пространства (время)", minval=1)
+
+_Box_isAlert = input.bool(defval=true, title="Коробка: показать сигналы, алерт")
+_Box_Cross_not_reach = input.int(defval=4, title="Коробка, недоход, %АТР", minval=1)
+_Box_Cross_break_through = input.int(defval=15, title="Коробка, пробитие, %АТР", minval=1)
+
+_Box_isSignF_1 = input.bool(defval=true, title="Коробка: фильтр 1")
+_Box_SignF_1_x = input.int(defval=50, title="Коробка: фильтр 1, x%", minval=0, maxval=100)
+_Box_isSignF_2 = input.bool(defval=true, title="Коробка: фильтр 2, квадрат (пока не подключен)")
+
+//=++==============================================================++=
+_Box_Price = -1//input.float(defval=-1, title="(НЕ ИСПОЛЬЗУЕТСЯ) Коробка: цена", minval=-1) // title="Коробка: цена, <0 по свингу"
+var _Box = objBox.new((_Box_Direction=="Long"), (_Box_Calc=="Swing"), _Box_tStart0, _Box_tLen_shiftSwing1, _Box_pLen_coefPrice1,
+ _Box_numSwing0, _Box_tLen_shiftSwing1, int(_Box_pLen_coefPrice1),
+ true,
+ _Box_Price)
+
+
+//=++==============================================================++=
+_isShow_Ray = input.bool(defval=true, title="Коробка: продлить лучи (углы 0, 1)")
+
+var string _extend_23 = extend.none
+var string _extend_01H = extend.none
+var string _extend_V = extend.none
+if barstate.isfirst and _isShow_Ray
+    _extend_01H := extend.right
+    _extend_V := extend.both
+
+var string _style_0 = line.style_solid
+var string _style_1 = line.style_dashed
+var string _style_2 = line.style_dashed
+var string _style_3 = line.style_dashed
+var string _style_HV = line.style_solid
+
+_isShow_Box_Corner_0 = input.bool(defval=true, title="Коробка: угол 0")
+_isShow_Box_Corner_1 = input.bool(defval=true, title="Коробка: угол 1")
+_isShow_Box_Corner_2 = input.bool(defval=false, title="Коробка: угол 2")
+_isShow_Box_Corner_3 = input.bool(defval=false, title="Коробка: угол 3")
+_isShow_Box_Horizontal = input.bool(defval=true, title="Коробка: горизонтальные")
+_isShow_Box_Vertical  = input.bool(defval=true, title="Коробка: вертикальные")
+
+//=++==============================================================++=
+_Box_Price_Ray_coef_2 = input.int(defval=1, title="Коробка/цена/лучи: коэф. 1/2, =0 off", minval=0)//4
+_Box_Price_Ray_coef_3 = input.int(defval=1, title="Коробка/цена/лучи: коэф. 1/3, =0 off", minval=0)//1
+_Box_Price_Ray_coef_5 = input.int(defval=0, title="Коробка/цена/лучи: коэф. 1/5, =0 off", minval=0)
+_Box_Price_Ray_coef_7 = input.int(defval=0, title="Коробка/цена/лучи: коэф. 1/7, =0 off", minval=0)
+
+_Box_Price_Line_coef_2 = input.int(defval=0, title="Коробка/цена//линии: коэф. 1/2, =0 off", minval=0)//4
+_Box_Price_Line_coef_3 = input.int(defval=0, title="Коробка/цена//линии: коэф. 1/3, =0 off", minval=0)//1
+_Box_Price_Line_coef_5 = input.int(defval=1, title="Коробка/цена//линии: коэф. 1/5, =0 off", minval=0)
+_Box_Price_Line_coef_7 = input.int(defval=1, title="Коробка/цена//линии: коэф. 1/7, =0 off", minval=0)
+
+_Box_Time_Ray_coef_2 = input.int(defval=1, title="Коробка/время/лучи: коэф. 1/2, =0 off", minval=0)//4
+_Box_Time_Ray_coef_3 = input.int(defval=1, title="Коробка/время/лучи: коэф. 1/3, =0 off", minval=0)//1
+_Box_Time_Ray_coef_5 = input.int(defval=0, title="Коробка/время/лучи: коэф. 1/5, =0 off", minval=0)
+_Box_Time_Ray_coef_7 = input.int(defval=0, title="Коробка/время/лучи: коэф. 1/7, =0 off", minval=0)
+
+_Box_Time_Line_coef_2 = input.int(defval=0, title="Коробка/время//линии: коэф. 1/2, =0 off", minval=0)//4
+_Box_Time_Line_coef_3 = input.int(defval=0, title="Коробка/время//линии: коэф. 1/3, =0 off", minval=0)//1
+_Box_Time_Line_coef_5 = input.int(defval=1, title="Коробка/время//линии: коэф. 1/5, =0 off", minval=0)
+_Box_Time_Line_coef_7 = input.int(defval=1, title="Коробка/время//линии: коэф. 1/7, =0 off", minval=0)
+
+_Color_Box_Main = input.color(defval=color.new(color.red,0), title="Коробка: Цвет основные 0,100")//color.yellow
+_Color_Box_coef_2 = input.color(defval=color.new(color.orange,0), title="Коробка: Цвет 1/2")//color.yellow//50
+_Color_Box_coef_3 = input.color(defval=color.new(color.green,0), title="Коробка: Цвет 1/3")//50
+_Color_Box_coef_5 = input.color(defval=color.new(color.orange,0), title="Коробка: Цвет 1/5")//50
+_Color_Box_coef_7 = input.color(defval=color.new(color.aqua,0), title="Коробка: Цвет 1/7")//50
+
+
+//=++==============================================================++=
+Box_Perc_Calc(array<objPerc> aPerc, int base, int coef, color clr, int start=0) =>
+    int k = 1
+    int n = base*coef
+    for i = 1 to n-1
+        array.push(aPerc, objPerc.new(k*i/n, clr, str.tostring(i)+"/"+str.tostring(n)))
+
+
+//=++==============================================================++=
+if barstate.isfirst
+    array.push(_aPerc_Price_Ray, objPerc.new(0, _Color_Box_Main, "0"))
+    array.push(_aPerc_Price_Ray, objPerc.new(1, _Color_Box_Main, "1"))
+    if _Box_Price_Ray_coef_2 > 0
+        Box_Perc_Calc(_aPerc_Price_Ray, 2, _Box_Price_Ray_coef_2, _Color_Box_coef_2)
+    if _Box_Price_Ray_coef_3 > 0
+        Box_Perc_Calc(_aPerc_Price_Ray, 3, _Box_Price_Ray_coef_3, _Color_Box_coef_3)
+    if _Box_Price_Ray_coef_5 > 0
+        Box_Perc_Calc(_aPerc_Price_Ray, 5, _Box_Price_Ray_coef_5, _Color_Box_coef_5)
+    if _Box_Price_Ray_coef_7 > 0
+        Box_Perc_Calc(_aPerc_Price_Ray, 7, _Box_Price_Ray_coef_7, _Color_Box_coef_7)
+
+    array.push(_aPerc_Price_Line, objPerc.new(0, _Color_Box_Main, "0"))
+    array.push(_aPerc_Price_Line, objPerc.new(1, _Color_Box_Main, "1"))
+    if _Box_Price_Line_coef_2 > 0
+        Box_Perc_Calc(_aPerc_Price_Line, 2, _Box_Price_Line_coef_2, _Color_Box_coef_2)
+    if _Box_Price_Line_coef_3 > 0
+        Box_Perc_Calc(_aPerc_Price_Line, 3, _Box_Price_Line_coef_3, _Color_Box_coef_3)
+    if _Box_Price_Line_coef_5 > 0
+        Box_Perc_Calc(_aPerc_Price_Line, 5, _Box_Price_Line_coef_5, _Color_Box_coef_5)
+    if _Box_Price_Line_coef_7 > 0
+        Box_Perc_Calc(_aPerc_Price_Line, 7, _Box_Price_Line_coef_7, _Color_Box_coef_7)
+
+    array.push(_aPerc_Time_Ray, objPerc.new(0, _Color_Box_Main, "0"))
+    array.push(_aPerc_Time_Ray, objPerc.new(1, _Color_Box_Main, "1"))
+    if _Box_Time_Ray_coef_2 > 0
+        Box_Perc_Calc(_aPerc_Time_Ray, 2, _Box_Time_Ray_coef_2, _Color_Box_coef_2)
+    if _Box_Time_Ray_coef_3 > 0
+        Box_Perc_Calc(_aPerc_Time_Ray, 3, _Box_Time_Ray_coef_3, _Color_Box_coef_3)
+    if _Box_Time_Ray_coef_5 > 0
+        Box_Perc_Calc(_aPerc_Time_Ray, 5, _Box_Time_Ray_coef_5, _Color_Box_coef_5)
+    if _Box_Time_Ray_coef_7 > 0
+        Box_Perc_Calc(_aPerc_Time_Ray, 7, _Box_Time_Ray_coef_7, _Color_Box_coef_7)
+
+    array.push(_aPerc_Time_Line, objPerc.new(0, _Color_Box_Main, "0"))
+    array.push(_aPerc_Time_Line, objPerc.new(1, _Color_Box_Main, "1"))
+    if _Box_Time_Line_coef_2 > 0
+        Box_Perc_Calc(_aPerc_Time_Line, 2, _Box_Time_Line_coef_2, _Color_Box_coef_2)
+    if _Box_Time_Line_coef_3 > 0
+        Box_Perc_Calc(_aPerc_Time_Line, 3, _Box_Time_Line_coef_3, _Color_Box_coef_3)
+    if _Box_Time_Line_coef_5 > 0
+        Box_Perc_Calc(_aPerc_Time_Line, 5, _Box_Time_Line_coef_5, _Color_Box_coef_5)
+    if _Box_Time_Line_coef_7 > 0
+        Box_Perc_Calc(_aPerc_Time_Line, 7, _Box_Time_Line_coef_7, _Color_Box_coef_7)
+
+
+
+
+
+
+//=++==============================================================++=
+//=++==============================================================++=
+//=++==============================================================++=
+isNewSwing= false // признак появления нового свинга
+
+
+//=++==============================================================++=
+var Extrems= array.new_float(0)
+var iExtrems= array.new_int(0)
+
+var int numSwing= -1
+
+
+var bool Up= na
+
+var float extremHigh= high
+var float extremLow= low
+
+var int iHigh= 0
+var int iLow= 0
+
+var float extremLocal= na
+//var iExtemLocal= 0
+
+var line lineId= na
+var label labelExtremId= na
+
+var float lastExtrem= na
+
+
+float atr= ta.atr(_ATR_period)
+
+
+minSwingSize()=> math.max(atr*_minSwingSize_ATR_percent/100, _minCorrection_percent/100*(extremHigh - extremLow))
+
+
+if (na(Up) and bar_index>0)
+    if (close > extremHigh) //highest(high[1], bar_index))
+        Up:= true
+    else if (close < extremLow) //lowest(low[1], bar_index))
+        Up:= false
+    if (high >= extremHigh)
+        extremHigh:= high
+        iHigh:= bar_index
+    if (low <= extremLow)
+        extremLow:= low
+        iLow:= bar_index
+    
+    if (extremHigh-extremLow < minSwingSize())
+        Up:=na
+    
+
+//DrawLine()=> (extremHigh-extremLow > minSwingSize()) ? line.new(iHigh, extremHigh, iLow, extremLow, color=color.blue, width=1) : na
+DrawLine()=> line.new(iHigh, extremHigh, iLow, extremLow, color=color.blue, width=2)
+
+//=++==============================================================++=
+DrawLabelExtrem()=> // label.new(x, y, text, xloc, yloc, color, style, textcolor, size, textalign, tooltip, text_font_family) → series label
+    float p= Up ? extremHigh : extremLow
+    int i= Up ? iHigh : iLow
+    float dp= extremHigh-extremLow
+    float dperc = dp / (Up ? extremLow : extremHigh) * 100.0
+    int di= math.abs(iHigh-iLow)
+    float s= dp/di
+
+    string txt_numSwing= (_isShow_numSwing ? "#"+str.tostring(numSwing) : "")
+
+    string txt_p= (_isShow_P ? str.tostring(p, format.mintick) : "")
+
+    string txt_dp= (_isShow_dP ? str.tostring(dp, format.mintick) : "")
+    string txt_dperc= (_isShow_dPerc ? "("+str.tostring(dperc, "0.00")+"%)" : "")
+    string txt_d= txt_dp + (txt_dp==""?"":" ") + txt_dperc
+
+    string txt_di= (_isShow_dT ? "("+str.tostring(di)+")" : "")
+    string txt_s= (_isShow_S ? str.tostring(s, format.mintick) : "")
+
+    string txt= txt_numSwing
+    txt:= (txt_p=="") ? txt : txt + (txt==""?"":"\n") + txt_p
+    txt:= (txt_d=="") ? txt : txt + (txt==""?"":"\n") + txt_d
+    txt:= (txt_di=="") ? txt : txt + (txt==""?"":"\n") + txt_di
+    txt:= (txt_s=="") ? txt : txt + (txt==""?"":"\n") + txt_s
+
+    float p_space= Up ? extremHigh+_shift_HL : extremLow-_shift_HL
+    label.new(i, p_space, txt, color=color.black, style=Up?label.style_label_down:label.style_label_up, textcolor=color.lime)//, size=size.tiny)
+//=++==============================================================++=
+
+//bool swingBroken= false
+
+
+if (Up==true) // or na(Up))
+    if (high >= extremHigh)
+        line.delete(lineId) //lineId:= na
+        if (_isShow)
+            label.delete(labelExtremId)
+        extremHigh:= high
+        iHigh:= bar_index
+        lineId:= DrawLine()
+        extremLocal:= na //(high-close > close-low) ? low : na
+        if (array.size(Extrems)>0)
+            array.pop(Extrems)
+            array.pop(iExtrems)
+            numSwing:= numSwing-1
+        array.push(Extrems, extremHigh)
+        array.push(iExtrems, iHigh)
+        numSwing:= numSwing+1
+        //if (close < lowest(low[1], bar_index - iHigh))
+        if (_isShow)
+            labelExtremId:= DrawLabelExtrem()
+    if (low < (na(extremLocal) ? low[1] : math.max(extremLocal,extremLow)) and  ((extremHigh-low > minSwingSize() and bar_index-iHigh>=_minSwing_bars) or low<extremLow)) //*(low<extremLow? 1 :1))) // or low<extremLow
+        //swingBroken:= close<extremLow
+        //if (swingBroken)
+        //  line.new(iLow, extremLow, bar_index, extremLow, color=color.yellow, style=line.style_dotted, width=2)
+        Up:= false
+        lastExtrem:= extremLow //not na(extremLow) and extremLow<low ? extremLow : na
+        extremLow:= low
+        iLow:= bar_index
+        lineId:= DrawLine()
+        if (array.size(Extrems)>4)
+            array.remove(Extrems, 0)
+            array.remove(iExtrems, 0)
+        array.push(Extrems, extremLow)
+        array.push(iExtrems, iLow)
+        numSwing:= numSwing+1
+        //line.new(iHigh, extremHigh, iLow, extremLow, color=color.blue, width=2) : na
+        extremLocal:= na //(high-close < close-low) ? high : na
+        isNewSwing:= true
+        if (_isShow)
+            labelExtremId:= DrawLabelExtrem()
+    else
+        if ((not na(extremLocal) and low<extremLocal) or (na(extremLocal) and high<extremHigh))
+            extremLocal:= low
+
+else if (Up==false) // or na(Up))
+    if (low <= extremLow)
+        line.delete(lineId) //lineId:= na
+        if (_isShow)
+            label.delete(labelExtremId)
+        extremLow:= low
+        iLow:= bar_index
+        lineId:= DrawLine()
+        extremLocal:= na //(high-close < close-low) ? high : na
+        if (array.size(Extrems)>0)
+            array.pop(Extrems)
+            array.pop(iExtrems)
+            numSwing:= numSwing-1
+        array.push(Extrems, extremLow)
+        array.push(iExtrems, iLow)
+        numSwing:= numSwing+1
+        if (_isShow)
+            labelExtremId:= DrawLabelExtrem()
+    if (high > (na(extremLocal) ? high[1] : math.min(extremLocal,extremHigh))  and  ((high-extremLow > minSwingSize() and bar_index-iLow>=_minSwing_bars) or high>extremHigh)) //*(high>extremHigh? 1 :1))) //or high>extremHigh))
+        //swingBroken:= close>extremHigh
+        Up:= true
+        lastExtrem:= extremHigh
+        extremHigh:= high
+        iHigh:= bar_index
+        lineId:= DrawLine()
+        if (array.size(Extrems)>4)
+            array.remove(Extrems, 0)
+            array.remove(iExtrems, 0)
+        array.push(Extrems, extremHigh)
+        array.push(iExtrems, iHigh)
+        numSwing:= numSwing+1
+        extremLocal:= na //(high-close > close-low) ? low  : na
+        isNewSwing:= true
+        if (_isShow)
+            labelExtremId:= DrawLabelExtrem()
+    else
+        if ((not na(extremLocal) and high>extremLocal) or (na(extremLocal) and low>extremLow))
+            extremLocal:= high
+
+
+if (not na(lastExtrem) and (Up ? high>lastExtrem : low<lastExtrem))
+    //swingBroken:= true
+    lastExtrem:= na
+
+
+
+
+
+
+//=++==============================================================++=
+//=++==============================================================++=
+//=++==============================================================++=
+int kk=-1
+if(_isShow_Box and isNewSwing and not _Box.isBox)
+    //_Box.set_Box_ZZ(Extrems, iExtrems, time)
+    _Box.set_Box_Swing(Extrems, iExtrems, numSwing)
+    //_Box.set_Box_Free(time, bar_index)
+    _Box.set_Box_2(_aPerc_Price_Ray, true, false)
+    _Box.set_Box_2(_aPerc_Price_Line, true, false)
+    _Box.set_Box_2(_aPerc_Time_Ray, false, true)
+    _Box.set_Box_2(_aPerc_Time_Line, false, true)
+    kk:=1
+
+int k=-1
+if(_Box.isBox)// and _Box.num <= 1)
+    _Box.set_Box_Swing_New(bar_index)
+
+    if(_Box.num != _Box_numPr_Time)
+        _Box.isBoxR := true
+
+    if(not _Box.isBoxR)
+        _Box.set_Box_2(_aPerc_Price_Ray, true, false)
+        _Box.set_Box_2(_aPerc_Price_Line, true, false)
+        _Box.set_Box_2(_aPerc_Time_Ray, false, true)
+        _Box.set_Box_2(_aPerc_Time_Line, false, true)
+        k:=1
+        if _isShow_Box_Corner_0
+            k:=2
+            Line_Ray_Delete(_aLine_Ray_C1) 
+        if _isShow_Box_Corner_1
+            Line_Ray_Delete(_aLine_Ray_C2) 
+
+
+
+if(_Box.isBox and not _Box.isBoxR)
+    if _isShow_Box_P
+        float p0_space = _Box.p0 + (_Box.isLong?-1:1) * _shift_HL
+        float p0_round = num_round(_Box.pLen, str.length(str.tostring(_Box.tLen)))
+        float perc = _Box.tLen / p0_round * 100.0
+        string txt = str.tostring(_Box.p0)// + " ("+str.tostring(p0_round, "0.0")+")"
+         + "\ndT=" + str.tostring(_Box.tLen) + " dP=" + str.tostring(_Box.pLen)
+         + "\n"+str.tostring(perc, "0.0")+"%"
+        var label_box = label.new(_Box.t0, p0_space, txt, color=color.black, style=_Box.isLong?label.style_label_upper_right:label.style_label_lower_right, textcolor=color.lime)//, size=size.tiny)
+
+    if _isShow_Box_Perc
+        int nPP = array.size(_aPerc_Price_Ray)
+        if(nPP > 0)
+            for j = 0 to nPP-1
+                op = objPerc.new()
+                op := array.get(_aPerc_Price_Ray, j)
+                int x = (_Box.t0 > 0 ? _Box.t0-1 : _Box.t0)
+                if(true)//(op.p >= 0)
+                    label.new(x, op.p, op.name, color=color.black, style=label.style_label_right, textcolor=op.clr, size=size.small)
+
+        int nPT = array.size(_aPerc_Time_Ray)
+        if(nPT > 0)
+            for j = 0 to nPT-1
+                op = objPerc.new()
+                op := array.get(_aPerc_Time_Ray, j)
+                float y = _Box.p0 + (_Box.isLong?-1:1) * _shift_HL
+                if(op.t >= 0)
+                    label.new(op.t, y, op.name, color=color.black, style=_Box.isLong?label.style_label_up:label.style_label_down, textcolor=op.clr, size=size.small)
+
+
+
+    if _isShow_Box_Corner_0
+        _Box.set_Ray(_aPerc_Price_Ray, _aRay_C1_Price, _Box.t0, _Box.p0, _Box.t3, _Box.p1, 0)
+        Ray(_aPerc_Price_Ray, _aRay_C1_Price, _aLine_Ray_C1, _extend_01H, _style_0)
+
+        _Box.set_Ray(_aPerc_Time_Ray, _aRay_C1_Time, _Box.t0, _Box.p0, _Box.t3, _Box.p1, 0)
+        Ray(_aPerc_Time_Ray, _aRay_C1_Time, _aLine_Ray_C1, _extend_01H, _style_0)
+
+    if _isShow_Box_Corner_1
+        _Box.set_Ray(_aPerc_Price_Ray, _aRay_C2_Price, _Box.t0, _Box.p1, _Box.t3, _Box.p0, 1)
+        Ray(_aPerc_Price_Ray, _aRay_C2_Price, _aLine_Ray_C2, _extend_01H, _style_1)
+
+        _Box.set_Ray(_aPerc_Time_Ray, _aRay_C2_Time, _Box.t0, _Box.p1, _Box.t3, _Box.p0, 1)
+        Ray(_aPerc_Time_Ray, _aRay_C2_Time, _aLine_Ray_C2, _extend_01H, _style_1)
+
+    if _isShow_Box_Corner_2
+        _Box.set_Ray(_aPerc_Price_Ray, _aRay_C3_Price, _Box.t3, _Box.p1, _Box.t0, _Box.p0, 2)
+        Ray(_aPerc_Price_Ray, _aRay_C3_Price, _aLine_Ray_C3, _extend_23, _style_2)
+
+        _Box.set_Ray(_aPerc_Time_Ray, _aRay_C3_Time, _Box.t3, _Box.p1, _Box.t0, _Box.p0, 2)
+        Ray(_aPerc_Time_Ray, _aRay_C3_Time, _aLine_Ray_C3, _extend_23, _style_2)
+
+    if _isShow_Box_Corner_3
+        _Box.set_Ray(_aPerc_Price_Ray, _aRay_C4_Price, _Box.t3, _Box.p0, _Box.t0, _Box.p1, 3)
+        Ray(_aPerc_Price_Ray, _aRay_C4_Price, _aLine_Ray_C4, _extend_23, _style_3)
+
+        _Box.set_Ray(_aPerc_Time_Ray, _aRay_C4_Time, _Box.t3, _Box.p0, _Box.t0, _Box.p1, 3)
+        Ray(_aPerc_Time_Ray, _aRay_C4_Time, _aLine_Ray_C4, _extend_23, _style_3)
+
+    if _isShow_Box_Horizontal
+        _Box.set_Ray(_aPerc_Price_Line, _aRay_H, _Box.t0, _Box.p0, _Box.t3, _Box.p1, 4)
+        Ray(_aPerc_Price_Line, _aRay_H, _aLine_Ray_H, _extend_01H, _style_HV)
+
+    if _isShow_Box_Vertical
+        _Box.set_Ray(_aPerc_Time_Line, _aRay_V, _Box.t0, _Box.p0, _Box.t3, _Box.p1, 5)
+        Ray(_aPerc_Time_Line, _aRay_V, _aLine_Ray_V, _extend_V, _style_HV)
+
+    _Box.isBoxR := true
+
+
+
+//plot(00000,color=na)
+//plot(array.size(_aPerc_Price_Ray),color=na)
+//plot(array.size(_aPerc_Price_Line),color=na)
+//plot(11111,color=na)
+//plot(array.size(_aRay_C1_Price),color=na)
+//plot(array.size(_aRay_C2_Price),color=na)
+//plot(array.size(_aRay_C3_Price),color=na)
+//plot(array.size(_aRay_C4_Price),color=na)
+//plot(22222,color=na)
+//plot(array.size(_aRay_C1_Time),color=na)
+//plot(array.size(_aRay_C2_Time),color=na)
+//plot(array.size(_aRay_C3_Time),color=na)
+//plot(array.size(_aRay_C4_Time),color=na)
+
+
+
+
+
+
+cross_l = 0
+cross_h = 0
+
+if(_Box.isBox and _Box.isBoxR)
+    if _isShow_Box_Corner_0
+        [is_l_C1, is_h_C1] = Cross(_aRay_C1_Price, atr, _Box_Cross_not_reach, _Box_Cross_break_through)
+        cross_l := cross_l + (is_l_C1?1:0)
+        cross_h := cross_h + (is_h_C1?1:0)
+
+    if _isShow_Box_Corner_1
+        [is_l_C2, is_h_C2] = Cross(_aRay_C2_Price, atr, _Box_Cross_not_reach, _Box_Cross_break_through)
+        cross_l := cross_l + (is_l_C2?1:0)
+        cross_h := cross_h + (is_h_C2?1:0)
+
+    if _isShow_Box_Horizontal
+        [is_l_H, is_h_H] = Cross(_aRay_H, atr, _Box_Cross_not_reach, _Box_Cross_break_through)
+        cross_l := cross_l + (is_l_H?1:0)
+        cross_h := cross_h + (is_h_H?1:0)
+
+
+
+isF1_Up = true
+isF1_Dn = true
+
+if(_Box_isSignF_1)
+    isF1_Up := (low  < low[1])  and ((math.min(open,close) - low)  / (high - low) * 100.0 >= _Box_SignF_1_x)
+    isF1_Dn := (high > high[1]) and ((high - math.max(open,close)) / (high - low) * 100.0 >= _Box_SignF_1_x)
+
+
+
+isUp = _Box_isAlert and isF1_Up and (cross_l > 1)
+isDn = _Box_isAlert and isF1_Dn and (cross_h > 1)
+
+plotshape(isUp, style=shape.arrowup, location=location.belowbar, color=color.new(color.green,0), size=size.normal)
+plotshape(isDn, style=shape.arrowdown, location=location.abovebar, color=color.new(color.red,0), size=size.normal)
+
+//alertcondition(isUp, title="BOX Buy", message="BOX Buy")
+//alertcondition(isDn, title="BOX Sell", message="BOX Sell")
+//alertcondition((isUp or isDn), title="BOX Buy/Sell", message="BOX Buy/Sell")
+if(isUp[1] or isDn[1])
+    alert("BOX: ID="+_Box_ID+" "+syminfo.tickerid+" "+timeframe.period+" "+(isUp[1]?"Buy":"")+" "+(isDn[1]?"Sell":""))
+
