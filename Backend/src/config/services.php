@@ -31,4 +31,9 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'bybit' => [
+        'base_url' => env('BYBIT_API_URL', 'https://api.bybit.com'),
+        'recv_window' => env('BYBIT_RECV_WINDOW', 5000),
+    ],
+
 ];

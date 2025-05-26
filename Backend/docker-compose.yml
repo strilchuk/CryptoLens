@@ -39,6 +39,50 @@ services:
     networks:
       - cl-network
 
+  cl_scheduler:
+    container_name: cl-scheduler
+    restart: on-failure
+    build:
+      context: .
+      dockerfile: ./docker/php_fpm/Dockerfile
+    env_file: .env
+    depends_on:
+      - cl_db
+      - cl_redis
+    environment:
+      COMPOSER_MEMORY_LIMIT: 2G
+    volumes:
+      - ./src:/var/www
+      - cl_files:/var/www/storage/app/
+      - ./docker/php_fpm/opcache.ini:/usr/local/etc/php/conf.d/opcache.ini
+      - ./docker/php_fpm/php.ini:/usr/local/etc/php/php.ini
+      - /etc/localtime:/etc/localtime:ro
+    command: php artisan schedule:work
+    networks:
+      - cl-network
+
+  cl_queue:
+    container_name: cl-queue
+    restart: on-failure
+    build:
+      context: .
+      dockerfile: ./docker/php_fpm/Dockerfile
+    env_file: .env
+    depends_on:
+      - cl_db
+      - cl_redis
+    environment:
+      COMPOSER_MEMORY_LIMIT: 2G
+    volumes:
+      - ./src:/var/www
+      - cl_files:/var/www/storage/app/
+      - ./docker/php_fpm/opcache.ini:/usr/local/etc/php/conf.d/opcache.ini
+      - ./docker/php_fpm/php.ini:/usr/local/etc/php/php.ini
+      - /etc/localtime:/etc/localtime:ro
+    command: php artisan queue:work --tries=3
+    networks:
+      - cl-network
+
   cl_db:
     image: postgres:15
     container_name: cl-db

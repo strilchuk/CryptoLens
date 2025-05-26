@@ -3,6 +3,7 @@
 use App\Constants\Api;
 use App\Constants\Common;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BybitController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -32,6 +33,10 @@ Route::middleware('api')->prefix("v1")->group(function () {
     Route::middleware(['auth:api'])->group(function () {
         Route::post(Api::USER . Api::LOGOUT, [AuthController::class, 'logout'])->middleware('auth:api');
         Route::get(Api::USER . Api::ACCOUNT, [AuthController::class, 'me'])->middleware('auth:api');
+        
+        // Bybit routes
+        Route::get('/bybit/wallet-balance', [BybitController::class, 'getWalletBalance'])->middleware('auth:api');
+        Route::get('/bybit/instruments', [BybitController::class, 'getInstruments']);
     });
 });
 

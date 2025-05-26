@@ -5,6 +5,8 @@ namespace App\Providers;
 use App\Http\Controllers\AuthController;
 use App\Services\Contracts\UserServiceInterface;
 use App\Services\UserService;
+use App\Integration\Bybit\BybitClient;
+use App\Integration\Bybit\BybitClientInterface;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -17,6 +19,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->when(AuthController::class)
             ->needs(UserServiceInterface::class)
             ->give(UserService::class);
+        $this->app->bind(BybitClientInterface::class, BybitClient::class);
     }
 
     /**

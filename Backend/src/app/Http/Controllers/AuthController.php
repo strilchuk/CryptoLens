@@ -43,7 +43,7 @@ class AuthController extends Controller
      * @param Request $request
      * @return JsonResponse
      */
-    public function register(Request $request)
+    public function register(Request $request): JsonResponse
     {
         $data = $request->json()?->all();
         $clientUserType = $this->userTypeRepository->getByTypeAlias(UserType::ALIAS_CLIENT);
@@ -64,7 +64,7 @@ class AuthController extends Controller
      * @param Request $request
      * @return JsonResponse
      */
-    public function login(Request $request)
+    public function login(Request $request): JsonResponse
     {
         $credentials = $request->only('email', 'password');
 
@@ -78,7 +78,7 @@ class AuthController extends Controller
     /**
      * @return JsonResponse
      */
-    public function logout()
+    public function logout(): JsonResponse
     {
         Auth::logout();
 
@@ -91,7 +91,7 @@ class AuthController extends Controller
     /**
      * @return JsonResponse
      */
-    public function me()
+    public function me(): JsonResponse
     {
         return response()->json(Auth::user());
     }
@@ -100,7 +100,7 @@ class AuthController extends Controller
      * @param $token
      * @return JsonResponse
      */
-    protected function respondWithToken($token)
+    protected function respondWithToken($token): JsonResponse
     {
         return response()->json([
             'access_token' => $token,

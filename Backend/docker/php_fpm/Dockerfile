@@ -13,12 +13,13 @@ RUN apt-get update && apt-get install -y \
     libmcrypt-dev \
     libpq-dev \
     libzip-dev \
-    libpng-dev \
     zlib1g-dev \
     libicu-dev \
     g++ \
     libmagickwand-dev \
-    libxml2-dev
+    libxml2-dev \
+    libzstd-dev \
+    libssl-dev
 
 # RUN apt-get update; \
 #     apt-get install -y libmagickwand-dev; \
@@ -33,6 +34,8 @@ RUN apt-get update; \
 
 RUN docker-php-ext-install zip
 
+# Установка Redis
+RUN pecl install redis && docker-php-ext-enable redis
 
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
