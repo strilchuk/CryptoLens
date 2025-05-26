@@ -1,0 +1,5 @@
+- Копируем ./env.example в ./env
+- Копируем ./src/env.example в ./src/env
+- docker network create cl-network
+- docker compose up -d
+- docker compose build

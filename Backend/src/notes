@@ -1,0 +1,108 @@
+Soft deleting
+    $table->softDeletes(); -> in migration
+    use SoftDeletes; -> trate in model
+
+    soft delete
+    $post = Post::find(1);
+    $post->delete();
+
+    restore
+    $post = Post::withTrashed()->find(1);
+    $post->restore();
+
+    hard delete
+    $post = Post::withTrashed()->find(1);
+    $post->forceDelete();
+
+    get only soft deleted
+    $trashedPosts = Post::onlyTrashed()->get();
+
+    get all with soft deleted
+    $allPosts = Post::withTrashed()->get();
+
+=====================
+Lang
+    $message = Lang::get('errors.flow_checker', [
+     'previous_value' => $previousValue,
+     'current_value' => $currentValue,
+    ]);
+
+    return [
+     'flow_checker' => 'Previous value: :previous_value, Current value: :current_value'
+    ];
+
+    // config/app.php
+    'locale' => 'ru',
+
+    // Или динамически
+    App::setLocale('ru'); // или 'en' для английского
+
+=====================
+Seeders
+    docker exec -it  admin_php_fpm bash -c "php artisan db:seed --class=UserTypeSeeder"
+
+=====================
+Factories
+    php artisan make:factory UserTypeFactory --model=UserType
+
+    UserType::factory()->count(10)->create();
+
+    $user = User::factory()->unverified()->create();
+    UserFactory::$password = Hash::make('your_password');
+    User::factory()->count(10)->create([
+     'password' => Hash::make('your_password'),
+    ]);
+
+=====================
+Tests
+    php artisan test
+    php artisan make:test AuthControllerTest
+
+=====================
+Database
+    $sql = $query->toSql();
+
+=====================
+Sniffer and code style
+    composer require --dev squizlabs/php_codesniffer - один раз ставим
+    vendor/bin/phpcs --config-set default_standard PSR12 - один раз говорим что используем PSR-12
+    vendor/bin/phpcs --standard=PSR12 app - проверка всего проекта на соответствие стандарту
+
+    Автоматическое исправление кода, не ставим пока
+    composer require --dev friendsofphp/php-cs-fixer
+    В файле .php-cs-fixer.dist.php:
+    ```
+    $finder = PhpCsFixer\Finder::create()
+        ->in(__DIR__ . '/app')
+        ->in(__DIR__ . '/routes')
+        ->in(__DIR__ . '/database')
+        ->in(__DIR__ . '/tests');
+
+    return (new PhpCsFixer\Config())
+        ->setRules([
+            '@PSR12' => true,
+            // добавьте другие правила по мере необходимости
+        ])
+        ->setFinder($finder);
+    ```
+    vendor/bin/php-cs-fixer fix - запуск автоматического исправления
+
+    CI\CD на примере GitHub Actions
+    .github/workflows/ci.yml:
+    name: CI
+
+    on: [push, pull_request]
+
+    jobs:
+      phpcs:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v2
+          - name: Set up PHP
+            uses: shivammathur/setup-php@v2
+            with:
+              php-version: '7.4' # или другая версия PHP
+          - name: Install dependencies
+            run: composer install
+          - name: Run PHP_CodeSniffer
+            run: vendor/bin/phpcs --standard=PSR12 app
