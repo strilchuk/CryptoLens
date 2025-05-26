@@ -15,33 +15,33 @@ class Kernel extends ConsoleKernel
 
     protected function schedule(Schedule $schedule): void
     {
-        Log::info('Проверка расписания...', [
-            'time' => now()->toDateTimeString(),
-            'commands' => $this->commands,
-            'timezone' => config('app.timezone'),
-        ]);
+//        Log::info('Проверка расписания...', [
+//            'time' => now()->toDateTimeString(),
+//            'commands' => $this->commands,
+//            'timezone' => config('app.timezone'),
+//        ]);
 
         $schedulerLogPath = storage_path('logs/scheduler.log');
-        Log::info('Попытка записи в scheduler.log', ['path' => $schedulerLogPath]);
+//        Log::info('Попытка записи в scheduler.log', ['path' => $schedulerLogPath]);
 
         $schedule->command('bybit:update-instruments')
-            ->everyMinute()
+            ->hourly()
             ->withoutOverlapping()
             ->appendOutputTo($schedulerLogPath)
             ->before(function () {
-                Log::info('Подготовка к запуску bybit:update-instruments', ['time' => now()->toDateTimeString()]);
+//                Log::info('Подготовка к запуску bybit:update-instruments', ['time' => now()->toDateTimeString()]);
             })
             ->after(function () {
-                Log::info('Завершение bybit:update-instruments', ['time' => now()->toDateTimeString()]);
+//                Log::info('Завершение bybit:update-instruments', ['time' => now()->toDateTimeString()]);
             });
 
-        Log::info('Запланированные команды', [
-            'scheduled' => array_map(fn($event) => [
-                'command' => $event->command,
-                'expression' => $event->expression,
-                'mutex' => $event->mutexName(),
-            ], $schedule->events())
-        ]);
+//        Log::info('Запланированные команды', [
+//            'scheduled' => array_map(fn($event) => [
+//                'command' => $event->command,
+//                'expression' => $event->expression,
+//                'mutex' => $event->mutexName(),
+//            ], $schedule->events())
+//        ]);
     }
 
     protected function commands(): void

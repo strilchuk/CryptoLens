@@ -24,22 +24,22 @@ class UpdateBybitInstruments extends Command
         Log::info("Запуск команды bybit:update-instruments", ['category' => $category]);
         try {
             $this->info("Получение списка инструментов категории {$category}...");
-            Log::info("Отправка запроса к Bybit API", ['category' => $category]);
+//            Log::info("Отправка запроса к Bybit API", ['category' => $category]);
 
             $response = $this->bybitClient->getInstruments($category);
             Log::info("Получен ответ от Bybit", ['count' => count($response->list)]);
 
             $count = count($response->list);
             $this->info("Найдено {$count} инструментов");
-            $bar = $this->output->createProgressBar($count);
+//            $bar = $this->output->createProgressBar($count);
 
             foreach ($response->list as $instrument) {
-                Log::debug("Обработка инструмента", ['symbol' => $instrument->symbol]);
+//                Log::debug("Обработка инструмента", ['symbol' => $instrument->symbol]);
                 BybitInstrument::updateFromDTO($instrument);
-                $bar->advance();
+//                $bar->advance();
             }
 
-            $bar->finish();
+//            $bar->finish();
             $this->newLine();
             $this->info('Инструменты успешно обновлены');
             Log::info('Инструменты успешно обновлены');
