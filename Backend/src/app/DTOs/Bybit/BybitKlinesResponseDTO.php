@@ -6,7 +6,7 @@ class BybitKlinesResponseDTO
 {
     /**
      * @param string $category Категория
-     * @param string $symbol Символ торговой пары
+     * @param string $symbol Символ
      * @param string $interval Интервал
      * @param array $list Список свечей
      */
@@ -24,7 +24,15 @@ class BybitKlinesResponseDTO
             category: $data['category'],
             symbol: $data['symbol'],
             interval: $data['interval'],
-            list: $data['list']
+            list: array_map(fn($kline) => (object) [
+                'startTime' => $kline[0],
+                'open' => $kline[1],
+                'high' => $kline[2],
+                'low' => $kline[3],
+                'close' => $kline[4],
+                'volume' => $kline[5],
+                'turnover' => $kline[6],
+            ], $data['list'])
         );
     }
 } 

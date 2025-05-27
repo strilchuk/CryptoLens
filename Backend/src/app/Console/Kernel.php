@@ -2,8 +2,10 @@
 
 namespace App\Console;
 
+use App\Console\Commands\TradeBybitSpot;
 use App\Console\Commands\UpdateBybitInstruments;
 use App\Console\Commands\UpdateBybitQuotes;
+use App\Console\Commands\PlaceBybitOrder;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 use Illuminate\Support\Facades\Log;
@@ -18,6 +20,8 @@ class Kernel extends ConsoleKernel
     protected $commands = [
         UpdateBybitInstruments::class,
         UpdateBybitQuotes::class,
+        PlaceBybitOrder::class,
+        TradeBybitSpot::class,
     ];
 
     protected function schedule(Schedule $schedule): void
@@ -54,6 +58,18 @@ class Kernel extends ConsoleKernel
 //                'mutex' => $event->mutexName(),
 //            ], $schedule->events())
 //        ]);
+
+
+//        $schedule->command('bybit:trade-spot BTCUSDT')
+//            ->everyFiveMinutes()
+//            ->withoutOverlapping()
+//            ->appendOutputTo($schedulerLogPath)
+//            ->before(function () {
+//                Log::info('Подготовка к запуску bybit:trade-spot');
+//            })
+//            ->after(function () {
+//                Log::info('Завершение bybit:trade-spot');
+//            });
     }
 
     protected function commands(): void

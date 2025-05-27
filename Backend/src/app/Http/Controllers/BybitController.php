@@ -7,16 +7,19 @@ use App\DTOs\Bybit\BybitWalletBalanceCoinDTO;
 use App\DTOs\Bybit\BybitWalletBalanceDTO;
 use App\DTOs\Bybit\BybitWalletBalanceResponseDTO;
 use App\Services\BybitService;
+use App\Integration\Bybit\BybitClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class BybitController extends Controller
 {
     private BybitService $bybitService;
+    private BybitClient $bybitClient;
 
-    public function __construct(BybitService $bybitService)
+    public function __construct(BybitService $bybitService, BybitClient $bybitClient)
     {
         $this->bybitService = $bybitService;
+        $this->bybitClient = $bybitClient;
     }
 
     /**
@@ -77,6 +80,44 @@ class BybitController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Получить ставки комиссии
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function getFeeRate(Request $request): JsonResponse
+    {
+        try {
+            $account = $request->user()->bybitAccount;
+            if (!$account) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Аккаунт Bybit не найден'
+                ], 404);
+            }
+
+            $category = $request->input('category', 'spot');
+            $symbol = $request->input('symbol');
+            $baseCoin = $request->input('base_coin');
+
+            $feeRate = $this->bybitClient->getFeeRate($account, $category, $symbol, $baseCoin);
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'category' => $feeRate->category,
+                    'list' => $feeRate->list
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
             ], 500);
         }
     }

@@ -6,6 +6,11 @@ use App\DTOs\Bybit\BybitInstrumentsResponseDTO;
 use App\DTOs\Bybit\BybitResponseDTO;
 use App\DTOs\Bybit\BybitTickersResponseDTO;
 use App\DTOs\Bybit\BybitWalletBalanceDTO;
+use App\DTOs\Bybit\BybitKlinesResponseDTO;
+use App\DTOs\Bybit\BybitTradesResponseDTO;
+use App\DTOs\Bybit\BybitOrderResponseDTO;
+use App\DTOs\Bybit\BybitOrderListResponseDTO;
+use App\DTOs\Bybit\BybitFeeRateResponseDTO;
 use App\Models\BybitAccount;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -198,6 +203,324 @@ class BybitClient implements BybitClientInterface
             }
 
             return BybitTradesResponseDTO::fromArray($bybitResponse->result);
+        } catch (\Exception $e) {
+            Log::error('Bybit API Error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Создать ордер
+     *
+     * @param BybitAccount $account
+     * @param string $symbol Символ торговой пары
+     * @param string $side Сторона (Buy/Sell)
+     * @param string $orderType Тип ордера (Market/Limit)
+     * @param string $qty Количество
+     * @param string|null $price Цена (для лимитного ордера)
+     * @param string $timeInForce Время действия (GTC/IOC/FOK)
+     * @param string|null $orderLinkId Пользовательский ID ордера
+     * @return BybitOrderResponseDTO
+     * @throws ConnectionException
+     */
+    public function createOrder(
+        BybitAccount $account,
+        string $symbol,
+        string $side,
+        string $orderType,
+        string $qty,
+        ?string $price = null,
+        string $timeInForce = 'GTC',
+        ?string $orderLinkId = null
+    ): BybitOrderResponseDTO {
+        $timestamp = (string) round(microtime(true) * 1000);
+        $payload = [
+            'category' => 'spot',
+            'symbol' => $symbol,
+            'side' => $side,
+            'orderType' => $orderType,
+            'qty' => $qty,
+            'timeInForce' => $timeInForce,
+        ];
+
+        if ($price) {
+            $payload['price'] = $price;
+        }
+        if ($orderLinkId) {
+            $payload['orderLinkId'] = $orderLinkId;
+        }
+
+        $signature = $this->generateSignature($timestamp, json_encode($payload), $account);
+
+        try {
+            $response = Http::withHeaders([
+                'X-BAPI-API-KEY' => $account->api_key,
+                'X-BAPI-TIMESTAMP' => $timestamp,
+                'X-BAPI-RECV-WINDOW' => (string) $this->recvWindow,
+                'X-BAPI-SIGN' => $signature,
+                'Content-Type' => 'application/json'
+            ])->post("{$this->baseUrl}/v5/order/create", $payload);
+
+            $responseData = $response->json();
+            $bybitResponse = BybitResponseDTO::fromArray($responseData);
+
+            if (!$bybitResponse->isSuccess()) {
+                throw new \Exception($bybitResponse->retMsg);
+            }
+
+            return BybitOrderResponseDTO::fromArray($bybitResponse->result);
+        } catch (\Exception $e) {
+            Log::error('Bybit API Error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Изменить ордер
+     *
+     * @param BybitAccount $account
+     * @param string $symbol Символ торговой пары
+     * @param string $orderId ID ордера
+     * @param string|null $price Новая цена
+     * @param string|null $qty Новое количество
+     * @return BybitOrderResponseDTO
+     * @throws ConnectionException
+     */
+    public function amendOrder(
+        BybitAccount $account,
+        string $symbol,
+        string $orderId,
+        ?string $price = null,
+        ?string $qty = null
+    ): BybitOrderResponseDTO {
+        $timestamp = (string) round(microtime(true) * 1000);
+        $payload = [
+            'category' => 'spot',
+            'symbol' => $symbol,
+            'orderId' => $orderId,
+        ];
+
+        if ($price) {
+            $payload['price'] = $price;
+        }
+        if ($qty) {
+            $payload['qty'] = $qty;
+        }
+
+        $signature = $this->generateSignature($timestamp, json_encode($payload), $account);
+
+        try {
+            $response = Http::withHeaders([
+                'X-BAPI-API-KEY' => $account->api_key,
+                'X-BAPI-TIMESTAMP' => $timestamp,
+                'X-BAPI-RECV-WINDOW' => (string) $this->recvWindow,
+                'X-BAPI-SIGN' => $signature,
+                'Content-Type' => 'application/json'
+            ])->post("{$this->baseUrl}/v5/order/amend", $payload);
+
+            $responseData = $response->json();
+            $bybitResponse = BybitResponseDTO::fromArray($responseData);
+
+            if (!$bybitResponse->isSuccess()) {
+                throw new \Exception($bybitResponse->retMsg);
+            }
+
+            return BybitOrderResponseDTO::fromArray($bybitResponse->result);
+        } catch (\Exception $e) {
+            Log::error('Bybit API Error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Отменить ордер
+     *
+     * @param BybitAccount $account
+     * @param string $symbol Символ торговой пары
+     * @param string $orderId ID ордера
+     * @return BybitOrderResponseDTO
+     * @throws ConnectionException
+     */
+    public function cancelOrder(
+        BybitAccount $account,
+        string $symbol,
+        string $orderId
+    ): BybitOrderResponseDTO {
+        $timestamp = (string) round(microtime(true) * 1000);
+        $payload = [
+            'category' => 'spot',
+            'symbol' => $symbol,
+            'orderId' => $orderId,
+        ];
+
+        $signature = $this->generateSignature($timestamp, json_encode($payload), $account);
+
+        try {
+            $response = Http::withHeaders([
+                'X-BAPI-API-KEY' => $account->api_key,
+                'X-BAPI-TIMESTAMP' => $timestamp,
+                'X-BAPI-RECV-WINDOW' => (string) $this->recvWindow,
+                'X-BAPI-SIGN' => $signature,
+                'Content-Type' => 'application/json'
+            ])->post("{$this->baseUrl}/v5/order/cancel", $payload);
+
+            $responseData = $response->json();
+            $bybitResponse = BybitResponseDTO::fromArray($responseData);
+
+            if (!$bybitResponse->isSuccess()) {
+                throw new \Exception($bybitResponse->retMsg);
+            }
+
+            return BybitOrderResponseDTO::fromArray($bybitResponse->result);
+        } catch (\Exception $e) {
+            Log::error('Bybit API Error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Отменить все ордера
+     *
+     * @param BybitAccount $account
+     * @param string $symbol Символ торговой пары
+     * @return BybitOrderResponseDTO
+     * @throws ConnectionException
+     */
+    public function cancelAllOrders(
+        BybitAccount $account,
+        string $symbol
+    ): BybitOrderResponseDTO {
+        $timestamp = (string) round(microtime(true) * 1000);
+        $payload = [
+            'category' => 'spot',
+            'symbol' => $symbol,
+        ];
+
+        $signature = $this->generateSignature($timestamp, json_encode($payload), $account);
+
+        try {
+            $response = Http::withHeaders([
+                'X-BAPI-API-KEY' => $account->api_key,
+                'X-BAPI-TIMESTAMP' => $timestamp,
+                'X-BAPI-RECV-WINDOW' => (string) $this->recvWindow,
+                'X-BAPI-SIGN' => $signature,
+                'Content-Type' => 'application/json'
+            ])->post("{$this->baseUrl}/v5/order/cancel-all", $payload);
+
+            $responseData = $response->json();
+            $bybitResponse = BybitResponseDTO::fromArray($responseData);
+
+            if (!$bybitResponse->isSuccess()) {
+                throw new \Exception($bybitResponse->retMsg);
+            }
+
+            return BybitOrderResponseDTO::fromArray($bybitResponse->result);
+        } catch (\Exception $e) {
+            Log::error('Bybit API Error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Получить открытые ордера
+     *
+     * @param BybitAccount $account
+     * @param string $symbol Символ торговой пары
+     * @param string|null $orderId ID ордера
+     * @param int $limit Лимит записей
+     * @return BybitOrderListResponseDTO
+     * @throws ConnectionException
+     */
+    public function getOpenOrders(
+        BybitAccount $account,
+        string $symbol,
+        ?string $orderId = null,
+        int $limit = 20
+    ): BybitOrderListResponseDTO {
+        $timestamp = (string) round(microtime(true) * 1000);
+        $queryParams = http_build_query([
+            'category' => 'spot',
+            'symbol' => $symbol,
+            'orderId' => $orderId,
+            'limit' => $limit,
+        ]);
+
+        $signature = $this->generateSignature($timestamp, $queryParams, $account);
+
+        try {
+            $response = Http::withHeaders([
+                'X-BAPI-API-KEY' => $account->api_key,
+                'X-BAPI-TIMESTAMP' => $timestamp,
+                'X-BAPI-RECV-WINDOW' => (string) $this->recvWindow,
+                'X-BAPI-SIGN' => $signature,
+                'Content-Type' => 'application/json'
+            ])->get("{$this->baseUrl}/v5/order/realtime", [
+                'category' => 'spot',
+                'symbol' => $symbol,
+                'orderId' => $orderId,
+                'limit' => $limit,
+            ]);
+
+            $responseData = $response->json();
+            $bybitResponse = BybitResponseDTO::fromArray($responseData);
+
+            if (!$bybitResponse->isSuccess()) {
+                throw new \Exception($bybitResponse->retMsg);
+            }
+
+            return BybitOrderListResponseDTO::fromArray($bybitResponse->result);
+        } catch (\Exception $e) {
+            Log::error('Bybit API Error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Получить ставки комиссии
+     *
+     * @param BybitAccount $account
+     * @param string $category Категория (spot, linear, inverse)
+     * @param string|null $symbol Символ торговой пары
+     * @param string|null $baseCoin Базовая валюта
+     * @return BybitFeeRateResponseDTO
+     * @throws ConnectionException
+     */
+    public function getFeeRate(
+        BybitAccount $account,
+        string $category = 'spot',
+        ?string $symbol = null,
+        ?string $baseCoin = null
+    ): BybitFeeRateResponseDTO {
+        $timestamp = (string) round(microtime(true) * 1000);
+        $queryParams = http_build_query(array_filter([
+            'category' => $category,
+            'symbol' => $symbol,
+            'baseCoin' => $baseCoin,
+        ]));
+
+        $signature = $this->generateSignature($timestamp, $queryParams, $account);
+
+        try {
+            $response = Http::withHeaders([
+                'X-BAPI-API-KEY' => $account->api_key,
+                'X-BAPI-TIMESTAMP' => $timestamp,
+                'X-BAPI-RECV-WINDOW' => (string) $this->recvWindow,
+                'X-BAPI-SIGN' => $signature,
+                'Content-Type' => 'application/json'
+            ])->get("{$this->baseUrl}/v5/account/fee-rate", [
+                'category' => $category,
+                'symbol' => $symbol,
+                'baseCoin' => $baseCoin,
+            ]);
+
+            $responseData = $response->json();
+            $bybitResponse = BybitResponseDTO::fromArray($responseData);
+
+            if (!$bybitResponse->isSuccess()) {
+                throw new \Exception($bybitResponse->retMsg);
+            }
+
+            return BybitFeeRateResponseDTO::fromArray($bybitResponse->result);
         } catch (\Exception $e) {
             Log::error('Bybit API Error: ' . $e->getMessage());
             throw $e;

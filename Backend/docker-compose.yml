@@ -31,6 +31,7 @@ services:
     volumes:
       - ./src:/var/www
       - cl_files:/var/www/storage/app/
+      - cl_vendor:/var/www/vendor
       - ./docker/php_fpm/xdebug.ini:/usr/local/etc/php/conf.d/xdebug.ini #xdebug конфигурация для подключения к ide
       - ./docker/php_fpm/opcache.ini:/usr/local/etc/php/conf.d/opcache.ini
       - ./docker/php_fpm/php.ini:/usr/local/etc/php/php.ini
@@ -54,6 +55,7 @@ services:
     volumes:
       - ./src:/var/www
       - cl_files:/var/www/storage/app/
+      - cl_vendor:/var/www/vendor
       - ./docker/php_fpm/opcache.ini:/usr/local/etc/php/conf.d/opcache.ini
       - ./docker/php_fpm/php.ini:/usr/local/etc/php/php.ini
       - /etc/localtime:/etc/localtime:ro
@@ -76,6 +78,7 @@ services:
     volumes:
       - ./src:/var/www
       - cl_files:/var/www/storage/app/
+      - cl_vendor:/var/www/vendor
       - ./docker/php_fpm/opcache.ini:/usr/local/etc/php/conf.d/opcache.ini
       - ./docker/php_fpm/php.ini:/usr/local/etc/php/php.ini
       - /etc/localtime:/etc/localtime:ro
@@ -136,6 +139,8 @@ volumes:
     name: cl_redis
   cl_files:
     name: cl_files
+  cl_vendor:
+    name: cl_vendor
 
 networks:
   cl-network:

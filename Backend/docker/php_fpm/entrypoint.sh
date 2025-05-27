@@ -14,7 +14,20 @@ chmod 666 /var/www/storage/logs/laravel.log
 touch /var/www/storage/logs/scheduler.log
 chmod 666 /var/www/storage/logs/scheduler.log
 
-composer install
+# Проверяем наличие vendor директории
+if [ ! -d "vendor" ]; then
+    echo "Installing dependencies..."
+    composer install
+fi
+
+# Проверяем, изменился ли composer.json
+#if [ -f "composer.json" ] && [ -f "composer.lock" ]; then
+#    if [ "$(stat -c %Y composer.json)" -gt "$(stat -c %Y vendor)" ]; then
+#        echo "composer.json was modified, updating dependencies..."
+#        composer install
+#    fi
+#fi
+
 php artisan migrate
 php artisan db:seed
 

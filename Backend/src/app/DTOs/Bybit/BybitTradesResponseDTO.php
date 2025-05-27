@@ -6,7 +6,7 @@ class BybitTradesResponseDTO
 {
     /**
      * @param string $category Категория
-     * @param string $symbol Символ торговой пары
+     * @param string $symbol Символ
      * @param array $list Список сделок
      */
     public function __construct(
@@ -21,7 +21,15 @@ class BybitTradesResponseDTO
         return new self(
             category: $data['category'],
             symbol: $data['symbol'],
-            list: $data['list']
+            list: array_map(fn($trade) => (object) [
+                'execId' => $trade['execId'],
+                'symbol' => $trade['symbol'],
+                'price' => $trade['price'],
+                'size' => $trade['size'],
+                'side' => $trade['side'],
+                'time' => $trade['time'],
+                'isBlockTrade' => $trade['isBlockTrade'],
+            ], $data['list'])
         );
     }
 } 

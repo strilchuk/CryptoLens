@@ -17,26 +17,20 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-//Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-//    return $request->user();
-//});
-
 Route::middleware('api')->prefix("v1")->group(function () {
+    // Общедоступные маршруты
     Route::get(Api::STATUS, function () {
         return ['status' => Common::STATUS_SUCCESS];
     });
-
     Route::post(Api::USER . Api::REGISTER, [AuthController::class, 'register']);
     Route::post(Api::USER . Api::LOGIN, [AuthController::class, 'login']);
+    Route::get('/bybit/instruments', [BybitController::class, 'getInstruments']);
 
-//    Route::middleware(['roles:api', 'user.constraints:api'])->group(function () {
-    Route::middleware(['auth:api'])->group(function () {
-        Route::post(Api::USER . Api::LOGOUT, [AuthController::class, 'logout'])->middleware('auth:api');
-        Route::get(Api::USER . Api::ACCOUNT, [AuthController::class, 'me'])->middleware('auth:api');
-        
-        // Bybit routes
-        Route::get('/bybit/wallet-balance', [BybitController::class, 'getWalletBalance'])->middleware('auth:api');
-        Route::get('/bybit/instruments', [BybitController::class, 'getInstruments']);
+    // Защищённые маршруты
+    Route::middleware('auth:api')->group(function () {
+        Route::post(Api::USER . Api::LOGOUT, [AuthController::class, 'logout']);
+        Route::get(Api::USER . Api::ACCOUNT, [AuthController::class, 'me']);
+        Route::get('/bybit/wallet-balance', [BybitController::class, 'getWalletBalance']);
+        Route::get('/bybit/fee-rate', [BybitController::class, 'getFeeRate']);
     });
 });
-

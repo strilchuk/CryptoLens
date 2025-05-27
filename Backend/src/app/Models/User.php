@@ -109,4 +109,12 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->bybitAccounts()->where('is_active', true)->first();
     }
+
+    /**
+     * Получить аккаунт Bybit пользователя
+     */
+    public function bybitAccount()
+    {
+        return $this->hasOne(BybitAccount::class);
+    }
 }
