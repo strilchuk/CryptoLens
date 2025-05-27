@@ -3,14 +3,21 @@
 namespace App\Console;
 
 use App\Console\Commands\UpdateBybitInstruments;
+use App\Console\Commands\UpdateBybitQuotes;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 use Illuminate\Support\Facades\Log;
 
 class Kernel extends ConsoleKernel
 {
+    /**
+     * The Artisan commands provided by your application.
+     *
+     * @var array
+     */
     protected $commands = [
         UpdateBybitInstruments::class,
+        UpdateBybitQuotes::class,
     ];
 
     protected function schedule(Schedule $schedule): void
@@ -27,13 +34,18 @@ class Kernel extends ConsoleKernel
         $schedule->command('bybit:update-instruments')
             ->hourly()
             ->withoutOverlapping()
-            ->appendOutputTo($schedulerLogPath)
+            ->appendOutputTo(storage_path('logs/scheduler.log'))
             ->before(function () {
 //                Log::info('Подготовка к запуску bybit:update-instruments', ['time' => now()->toDateTimeString()]);
             })
             ->after(function () {
 //                Log::info('Завершение bybit:update-instruments', ['time' => now()->toDateTimeString()]);
             });
+
+//            $schedule->command('bybit:update-quotes')
+//            ->everyMinute()
+//            ->withoutOverlapping()
+//            ->appendOutputTo(storage_path('logs/scheduler.log'));
 
 //        Log::info('Запланированные команды', [
 //            'scheduled' => array_map(fn($event) => [
