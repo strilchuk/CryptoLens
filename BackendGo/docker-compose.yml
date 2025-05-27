@@ -7,9 +7,14 @@ services:
       context: .
       dockerfile: docker/app/Dockerfile
     environment:
-      - DATABASE_URL=postgres://${DB_USERNAME}:${DB_PASSWORD}@db:${DB_PORT_LOCAL}/${DB_DATABASE}?sslmode=disable
+      - DATABASE_URL=postgres://${DB_USERNAME}:${DB_PASSWORD}@cl_db:${DB_PORT_LOCAL}/${DB_DATABASE}?sslmode=disable
+    ports:
+      - ${SERVER_PORT}:${SERVER_PORT}
     depends_on:
-      - cl_db
+      cl_db:
+        condition: service_started
+      cl_redis:
+        condition: service_started
     volumes:
       - ./logs:/app/logs
     networks:
@@ -19,7 +24,7 @@ services:
     image: redis
     env_file: .env
     restart: on-failure
-    container_name: cl-redis
+    container_name: cl_redis
     command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       - cl_redis:/data
@@ -30,7 +35,7 @@ services:
 
   cl_db:
     image: postgres:15
-    container_name: cl-db
+    container_name: cl_db
     restart: on-failure
     #    env_file: .env
     environment:
@@ -42,19 +47,16 @@ services:
       - ${DB_PORT_EXTERNAL}:${DB_PORT_LOCAL}
     volumes:
       - cl_db:/var/lib/postgresql/data
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U sa -d ${DB_DATABASE}" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - cl-network
 
 volumes:
   cl_db:
     name: cl_db
+  cl_redis:
+    name: cl_redis
 
 networks:
   cl-network:
-    external:
-      name: cl-network
+    external: true
+    name: cl-network

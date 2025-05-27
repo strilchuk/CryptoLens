@@ -13,6 +13,10 @@ func Init() {
 	}
 }
 
+func GetServerPort() string {
+	return os.Getenv("SERVER_PORT")
+}
+
 func GetDBUser() string {
 	return os.Getenv("DB_USERNAME")
 }
@@ -29,6 +33,30 @@ func GetDBHost() string {
 	return os.Getenv("DB_HOST")
 }
 
-func GetToken() string {
-	return os.Getenv("TOKEN")
+func GetRedisHost() string {
+	return os.Getenv("REDIS_HOST")
+}
+
+func GetRedisPassword() string {
+	return os.Getenv("REDIS_PASSWORD")
+}
+
+func GetRedisPortLocal() string {
+	return os.Getenv("REDIS_PORT_LOCAL")
+}
+
+func GetBybitApiUrl() string {
+	return os.Getenv("BYBIT_API_URL")
+}
+
+func GetBybitApiTestUrl() string {
+	return os.Getenv("BYBIT_API_TEST_URL")
+}
+
+func GetBybitRecvWindow() string {
+	return os.Getenv("BYBIT_RECV_WINDOW")
+}
+
+func GetJWTSecret() string {
+	return os.Getenv("JWT_SECRET")
 }
