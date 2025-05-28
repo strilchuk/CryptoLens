@@ -30,7 +30,14 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 
 	// Инициализация клиента Bybit
 	recvWindow, _ := strconv.Atoi(env.GetBybitRecvWindow())
-	bybitClient := bybit.NewClient(env.GetBybitApiUrl(), recvWindow)
+	apiMode := env.GetBybitApiMode()
+	var apiUrl string
+	if apiMode == "test" {
+		apiUrl = env.GetBybitApiTestUrl()
+	} else {
+		apiUrl = env.GetBybitApiUrl()
+	}
+	bybitClient := bybit.NewClient(apiUrl, recvWindow, apiMode == "test")
 
 	// Инициализация сервисов
 	userService := services.NewUserService(userRepo, jwtKey, db)

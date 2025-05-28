@@ -57,6 +57,14 @@ func GetBybitRecvWindow() string {
 	return os.Getenv("BYBIT_RECV_WINDOW")
 }
 
+func GetBybitInstrumentsUpdateInterval() string {
+	return os.Getenv("BYBIT_INSTRUMENTS_UPDATE_INTERVAL")
+}
+
+func GetBybitApiMode() string {
+	return os.Getenv("BYBIT_API_MODE")
+}
+
 func GetJWTSecret() string {
 	return os.Getenv("JWT_SECRET")
 }

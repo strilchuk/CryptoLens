@@ -1,6 +1,7 @@
 package services
 
 import (
+	"CryptoLens_Backend/env"
 	"CryptoLens_Backend/integration/bybit"
 	"CryptoLens_Backend/logger"
 	"CryptoLens_Backend/models"
@@ -9,7 +10,6 @@ import (
 	"database/sql"
 	"errors"
 	"github.com/shopspring/decimal"
-	"log"
 	"strings"
 	"time"
 )
@@ -87,7 +87,13 @@ func (s *BybitService) GetInstruments(ctx context.Context, category string) ([]m
 }
 
 func (s *BybitService) StartInstrumentsUpdate(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Minute) // Для тестирования обновляем каждую минуту
+	interval, err := time.ParseDuration(env.GetBybitInstrumentsUpdateInterval())
+	if err != nil {
+		interval = 5 * time.Minute // значение по умолчанию
+		logger.LogError("Failed to parse BYBIT_INSTRUMENTS_UPDATE_INTERVAL, using default: %v", err)
+	}
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -96,7 +102,7 @@ func (s *BybitService) StartInstrumentsUpdate(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := s.updateInstruments(ctx); err != nil {
-				log.Printf("Error updating instruments: %v", err)
+				logger.LogError("Error updating instruments: %v", err)
 			}
 		}
 	}
@@ -119,19 +125,19 @@ func (s *BybitService) updateInstruments(ctx context.Context) error {
 		maxQty, _ := decimal.NewFromString(instrument.LotSizeFilter.MaxOrderQty)
 
 		instruments = append(instruments, models.BybitInstrument{
-			Symbol:           instrument.Symbol,
-			Category:         response.Category,
-			BaseCoin:         instrument.BaseCoin,
-			QuoteCoin:        instrument.QuoteCoin,
-			PricePrecision:   pricePrecision,
+			Symbol:            instrument.Symbol,
+			Category:          response.Category,
+			BaseCoin:          instrument.BaseCoin,
+			QuoteCoin:         instrument.QuoteCoin,
+			PricePrecision:    pricePrecision,
 			QuantityPrecision: quantityPrecision,
-			MinPrice:         decimal.Zero, // TODO: Добавить в API
-			MaxPrice:         decimal.Zero, // TODO: Добавить в API
-			MinQuantity:      minQty,
-			MaxQuantity:      maxQty,
-			QuantityStep:     decimal.NewFromInt(1), // TODO: Добавить в API
-			PriceStep:        price,
-			Status:           instrument.Status,
+			MinPrice:          decimal.Zero, // TODO: Добавить в API
+			MaxPrice:          decimal.Zero, // TODO: Добавить в API
+			MinQuantity:       minQty,
+			MaxQuantity:       maxQty,
+			QuantityStep:      decimal.NewFromInt(1), // TODO: Добавить в API
+			PriceStep:         price,
+			Status:            instrument.Status,
 		})
 	}
 

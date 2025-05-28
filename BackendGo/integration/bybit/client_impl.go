@@ -19,14 +19,16 @@ import (
 type client struct {
 	baseURL    string
 	recvWindow int
+	isTestMode bool
 	httpClient *http.Client
 }
 
 // NewClient создает новый клиент Bybit
-func NewClient(baseURL string, recvWindow int) Client {
+func NewClient(baseURL string, recvWindow int, isTestMode bool) Client {
 	return &client{
 		baseURL:    baseURL,
 		recvWindow: recvWindow,
+		isTestMode: isTestMode,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
