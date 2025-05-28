@@ -2,6 +2,7 @@ package services
 
 import (
 	"CryptoLens_Backend/integration/bybit"
+	"CryptoLens_Backend/logger"
 	"CryptoLens_Backend/models"
 	"CryptoLens_Backend/repositories"
 	"context"
@@ -102,31 +103,45 @@ func (s *BybitService) StartInstrumentsUpdate(ctx context.Context) {
 }
 
 func (s *BybitService) updateInstruments(ctx context.Context) error {
-	// Получаем инструменты через API Bybit
 	response, err := s.bybitClient.GetInstruments(ctx, "spot")
 	if err != nil {
+		logger.LogError("Failed to get instruments from Bybit: %v", err)
 		return err
 	}
 
-	// Конвертируем в нашу модель
-	var dbInstruments []models.BybitInstrument
-	for _, inst := range response.List {
-		dbInstruments = append(dbInstruments, models.BybitInstrument{
-			Symbol:        inst.Symbol,
-			Category:      response.Category,
-			BaseCoin:      inst.BaseCoin,
-			QuoteCoin:     inst.QuoteCoin,
-			MinOrderQty:   parseDecimal(inst.LotSizeFilter.MinOrderQty),
-			MaxOrderQty:   parseDecimal(inst.LotSizeFilter.MaxOrderQty),
-			MinPrice:      parseDecimal(inst.PriceFilter.TickSize),
-			MaxPrice:      decimal.Zero, // TODO: Добавить в API
-			PriceScale:    getPrecision(inst.LotSizeFilter.QuotePrecision),
-			QuantityScale: getPrecision(inst.LotSizeFilter.BasePrecision),
-			Status:        inst.Status,
+	var instruments []models.BybitInstrument
+	for _, instrument := range response.List {
+		pricePrecision := getPrecision(instrument.PriceFilter.TickSize)
+		quantityPrecision := getPrecision(instrument.LotSizeFilter.BasePrecision)
+
+		price, _ := decimal.NewFromString(instrument.PriceFilter.TickSize)
+		minQty, _ := decimal.NewFromString(instrument.LotSizeFilter.MinOrderQty)
+		maxQty, _ := decimal.NewFromString(instrument.LotSizeFilter.MaxOrderQty)
+
+		instruments = append(instruments, models.BybitInstrument{
+			Symbol:           instrument.Symbol,
+			Category:         response.Category,
+			BaseCoin:         instrument.BaseCoin,
+			QuoteCoin:        instrument.QuoteCoin,
+			PricePrecision:   pricePrecision,
+			QuantityPrecision: quantityPrecision,
+			MinPrice:         decimal.Zero, // TODO: Добавить в API
+			MaxPrice:         decimal.Zero, // TODO: Добавить в API
+			MinQuantity:      minQty,
+			MaxQuantity:      maxQty,
+			QuantityStep:     decimal.NewFromInt(1), // TODO: Добавить в API
+			PriceStep:        price,
+			Status:           instrument.Status,
 		})
 	}
 
-	return s.bybitInstrumentRepo.UpsertInstruments(ctx, dbInstruments)
+	if err := s.bybitInstrumentRepo.SaveInstruments(ctx, instruments); err != nil {
+		logger.LogError("Failed to save instruments: %v", err)
+		return err
+	}
+
+	logger.LogInfo("Successfully updated %d instruments", len(instruments))
+	return nil
 }
 
 func (s *BybitService) getBybitAccount(ctx context.Context, userID string) (*bybit.BybitAccount, error) {
