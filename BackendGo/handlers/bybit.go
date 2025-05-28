@@ -65,3 +65,24 @@ func (h *BybitHandler) GetFeeRate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(feeRate)
 }
+
+func (h *BybitHandler) GetInstruments(w http.ResponseWriter, r *http.Request) {
+	category := r.URL.Query().Get("category")
+	if category == "" {
+		category = "spot"
+	}
+
+	instruments, err := h.bybitService.GetInstruments(r.Context(), category)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"status": "success",
+		"data":   instruments,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}

@@ -120,8 +120,20 @@ func (c *client) GetInstruments(ctx context.Context, category string) (*BybitIns
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
+	// Преобразуем result в map[string]interface{}
+	resultMap, ok := bybitResp.Result.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("неожиданный формат ответа: %v", bybitResp.Result)
+	}
+
+	// Преобразуем map обратно в JSON
+	resultBytes, err := json.Marshal(resultMap)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
+	}
+
 	var result BybitInstrumentsResponse
-	if err := json.Unmarshal(bybitResp.Result.(json.RawMessage), &result); err != nil {
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 

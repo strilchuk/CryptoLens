@@ -6,16 +6,17 @@ import (
 )
 
 type BybitRoutes struct {
-	handler *handlers.BybitHandler
+	bybitHandler *handlers.BybitHandler
 }
 
-func NewBybitRoutes(handler *handlers.BybitHandler) *BybitRoutes {
+func NewBybitRoutes(bybitHandler *handlers.BybitHandler) *BybitRoutes {
 	return &BybitRoutes{
-		handler: handler,
+		bybitHandler: bybitHandler,
 	}
 }
 
 func (r *BybitRoutes) Register() {
-	http.HandleFunc("/api/v1/bybit/wallet-balance", r.handler.GetWalletBalance)
-	http.HandleFunc("/api/v1/bybit/fee-rate", r.handler.GetFeeRate)
+	http.HandleFunc("/api/bybit/wallet/balance", r.bybitHandler.GetWalletBalance)
+	http.HandleFunc("/api/bybit/wallet/fee-rate", r.bybitHandler.GetFeeRate)
+	http.HandleFunc("/api/bybit/instruments", r.bybitHandler.GetInstruments)
 } 

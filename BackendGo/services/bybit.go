@@ -2,22 +2,30 @@ package services
 
 import (
 	"CryptoLens_Backend/integration/bybit"
+	"CryptoLens_Backend/models"
+	"CryptoLens_Backend/repositories"
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/shopspring/decimal"
+	"log"
+	"strings"
+	"time"
 )
 
 type BybitService struct {
-	bybitClient bybit.Client
-	db          *sql.DB
-	userService *UserService
+	bybitClient         bybit.Client
+	db                  *sql.DB
+	userService         *UserService
+	bybitInstrumentRepo *repositories.BybitInstrumentRepository
 }
 
 func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserService) *BybitService {
 	return &BybitService{
-		bybitClient: bybitClient,
-		db:          db,
-		userService: userService,
+		bybitClient:         bybitClient,
+		db:                  db,
+		userService:         userService,
+		bybitInstrumentRepo: repositories.NewBybitInstrumentRepository(db),
 	}
 }
 
@@ -73,6 +81,54 @@ func (s *BybitService) GetFeeRate(ctx context.Context, token string, category st
 	return feeRate, nil
 }
 
+func (s *BybitService) GetInstruments(ctx context.Context, category string) ([]models.BybitInstrument, error) {
+	return s.bybitInstrumentRepo.GetInstruments(ctx, category)
+}
+
+func (s *BybitService) StartInstrumentsUpdate(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Minute) // Для тестирования обновляем каждую минуту
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := s.updateInstruments(ctx); err != nil {
+				log.Printf("Error updating instruments: %v", err)
+			}
+		}
+	}
+}
+
+func (s *BybitService) updateInstruments(ctx context.Context) error {
+	// Получаем инструменты через API Bybit
+	response, err := s.bybitClient.GetInstruments(ctx, "spot")
+	if err != nil {
+		return err
+	}
+
+	// Конвертируем в нашу модель
+	var dbInstruments []models.BybitInstrument
+	for _, inst := range response.List {
+		dbInstruments = append(dbInstruments, models.BybitInstrument{
+			Symbol:        inst.Symbol,
+			Category:      response.Category,
+			BaseCoin:      inst.BaseCoin,
+			QuoteCoin:     inst.QuoteCoin,
+			MinOrderQty:   parseDecimal(inst.LotSizeFilter.MinOrderQty),
+			MaxOrderQty:   parseDecimal(inst.LotSizeFilter.MaxOrderQty),
+			MinPrice:      parseDecimal(inst.PriceFilter.TickSize),
+			MaxPrice:      decimal.Zero, // TODO: Добавить в API
+			PriceScale:    getPrecision(inst.LotSizeFilter.QuotePrecision),
+			QuantityScale: getPrecision(inst.LotSizeFilter.BasePrecision),
+			Status:        inst.Status,
+		})
+	}
+
+	return s.bybitInstrumentRepo.UpsertInstruments(ctx, dbInstruments)
+}
+
 func (s *BybitService) getBybitAccount(ctx context.Context, userID string) (*bybit.BybitAccount, error) {
 	var account bybit.BybitAccount
 	err := s.db.QueryRowContext(ctx,
@@ -97,4 +153,22 @@ func (s *BybitService) getBybitAccount(ctx context.Context, userID string) (*byb
 	}
 
 	return &account, nil
+}
+
+// parseDecimal преобразует строку в decimal.Decimal
+func parseDecimal(s string) decimal.Decimal {
+	d, _ := decimal.NewFromString(s)
+	return d
+}
+
+// getPrecision возвращает количество знаков после запятой
+func getPrecision(s string) int {
+	if s == "" {
+		return 0
+	}
+	parts := strings.Split(s, ".")
+	if len(parts) != 2 {
+		return 0
+	}
+	return len(parts[1])
 }

@@ -1,12 +1,15 @@
 package container
 
 import (
+	"CryptoLens_Backend/env"
 	"CryptoLens_Backend/handlers"
 	"CryptoLens_Backend/integration/bybit"
 	"CryptoLens_Backend/repositories"
 	"CryptoLens_Backend/routes"
 	"CryptoLens_Backend/services"
+	"context"
 	"database/sql"
+	"strconv"
 )
 
 type Container struct {
@@ -25,13 +28,12 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 	// Инициализация репозиториев
 	userRepo := repositories.NewUserRepository(db)
 
+	// Инициализация клиента Bybit
+	recvWindow, _ := strconv.Atoi(env.GetBybitRecvWindow())
+	bybitClient := bybit.NewClient(env.GetBybitApiUrl(), recvWindow)
+
 	// Инициализация сервисов
 	userService := services.NewUserService(userRepo, jwtKey, db)
-
-	// Инициализация клиента Bybit
-	bybitClient := bybit.NewClient("https://api.bybit.com", 5000)
-
-	// Инициализация сервиса Bybit
 	bybitService := services.NewBybitService(bybitClient, db, userService)
 
 	// Инициализация обработчиков
@@ -58,4 +60,9 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 func (c *Container) RegisterRoutes() {
 	c.UserRoutes.Register()
 	c.BybitRoutes.Register()
+}
+
+func (c *Container) StartBackgroundTasks(ctx context.Context) {
+	// Запускаем обновление инструментов
+	go c.BybitService.StartInstrumentsUpdate(ctx)
 } 
