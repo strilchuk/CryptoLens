@@ -2,6 +2,7 @@ package routes
 
 import (
 	"CryptoLens_Backend/handlers"
+	"CryptoLens_Backend/middleware"
 	"net/http"
 )
 
@@ -16,8 +17,11 @@ func NewUserRoutes(handler *handlers.UserHandler) *UserRoutes {
 }
 
 func (r *UserRoutes) Register() {
+	// Публичные маршруты (без аутентификации)
 	http.HandleFunc("/api/v1/user/register", r.handler.Register)
 	http.HandleFunc("/api/v1/user/login", r.handler.Login)
-	http.HandleFunc("/api/v1/user/logout", r.handler.Logout)
-	http.HandleFunc("/api/v1/user/account", r.handler.GetAccount)
+
+	// Защищенные маршруты (требуют аутентификации)
+	http.HandleFunc("/api/v1/user/logout", middleware.AuthMiddleware(r.handler.Logout))
+	http.HandleFunc("/api/v1/user/account", middleware.AuthMiddleware(r.handler.GetAccount))
 } 

@@ -24,6 +24,7 @@ type Claims struct {
 }
 
 func NewUserService(userRepo *repositories.UserRepository, jwtKey []byte, db *sql.DB) *UserService {
+	SetJWTKey(jwtKey)
 	return &UserService{
 		userRepo: userRepo,
 		jwtKey:   jwtKey,

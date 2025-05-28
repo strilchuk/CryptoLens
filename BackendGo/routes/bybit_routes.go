@@ -2,6 +2,7 @@ package routes
 
 import (
 	"CryptoLens_Backend/handlers"
+	"CryptoLens_Backend/middleware"
 	"net/http"
 )
 
@@ -16,7 +17,8 @@ func NewBybitRoutes(bybitHandler *handlers.BybitHandler) *BybitRoutes {
 }
 
 func (r *BybitRoutes) Register() {
-	http.HandleFunc("/api/bybit/wallet/balance", r.bybitHandler.GetWalletBalance)
-	http.HandleFunc("/api/bybit/wallet/fee-rate", r.bybitHandler.GetFeeRate)
-	http.HandleFunc("/api/bybit/instruments", r.bybitHandler.GetInstruments)
-} 
+	// Все маршруты Bybit требуют аутентификации
+	http.HandleFunc("/api/v1/bybit/wallet/balance", middleware.AuthMiddleware(r.bybitHandler.GetWalletBalance))
+	http.HandleFunc("/api/v1/bybit/wallet/fee-rate", middleware.AuthMiddleware(r.bybitHandler.GetFeeRate))
+	http.HandleFunc("/api/v1/bybit/instruments", middleware.AuthMiddleware(r.bybitHandler.GetInstruments))
+}

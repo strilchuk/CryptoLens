@@ -36,40 +36,40 @@ type BybitWalletBalance struct {
 
 // BybitAccountBalance представляет баланс аккаунта
 type BybitAccountBalance struct {
-	AccountIMRate          string              `json:"accountIMRate"`
-	AccountLTV            string              `json:"accountLTV"`
-	AccountMMRate         string              `json:"accountMMRate"`
 	AccountType           string              `json:"accountType"`
-	Coins                 []BybitCoinBalance  `json:"coin"`
+	Coins                []BybitCoinBalance  `json:"coin"`
 	TotalAvailableBalance string              `json:"totalAvailableBalance"`
 	TotalEquity           string              `json:"totalEquity"`
+	TotalWalletBalance    string              `json:"totalWalletBalance"`
+	AccountIMRate         string              `json:"accountIMRate"`
+	TotalMarginBalance    string              `json:"totalMarginBalance"`
 	TotalInitialMargin    string              `json:"totalInitialMargin"`
 	TotalMaintenanceMargin string             `json:"totalMaintenanceMargin"`
-	TotalMarginBalance    string              `json:"totalMarginBalance"`
 	TotalPerpUPL          string              `json:"totalPerpUPL"`
-	TotalWalletBalance    string              `json:"totalWalletBalance"`
+	AccountMMRate         string              `json:"accountMMRate"`
+	AccountLTV            string              `json:"accountLTV"`
 }
 
 // BybitCoinBalance представляет баланс монеты
 type BybitCoinBalance struct {
-	AccruedInterest    string `json:"accruedInterest"`
+	Coin               string `json:"coin"`
+	Equity             string `json:"equity"`
+	USDValue           string `json:"usdValue"`
+	WalletBalance      string `json:"walletBalance"`
 	AvailableToBorrow  string `json:"availableToBorrow"`
 	AvailableToWithdraw string `json:"availableToWithdraw"`
 	Bonus              string `json:"bonus"`
 	BorrowAmount       string `json:"borrowAmount"`
-	Coin               string `json:"coin"`
-	CollateralSwitch   bool   `json:"collateralSwitch"`
-	CumRealisedPnl     string `json:"cumRealisedPnl"`
-	Equity             string `json:"equity"`
-	Locked             string `json:"locked"`
-	MarginCollateral   bool   `json:"marginCollateral"`
-	SpotHedgingQty     string `json:"spotHedgingQty"`
+	AccruedInterest    string `json:"accruedInterest"`
 	TotalOrderIM       string `json:"totalOrderIM"`
 	TotalPositionIM    string `json:"totalPositionIM"`
 	TotalPositionMM    string `json:"totalPositionMM"`
 	UnrealisedPnl      string `json:"unrealisedPnl"`
-	USDValue           string `json:"usdValue"`
-	WalletBalance      string `json:"walletBalance"`
+	CumRealisedPnl     string `json:"cumRealisedPnl"`
+	Locked             string `json:"locked"`
+	CollateralSwitch   bool   `json:"collateralSwitch"`
+	MarginCollateral   bool   `json:"marginCollateral"`
+	SpotHedgingQty     string `json:"spotHedgingQty"`
 }
 
 // BybitInstrumentsResponse представляет ответ со списком инструментов

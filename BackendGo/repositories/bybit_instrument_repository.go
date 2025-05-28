@@ -23,14 +23,7 @@ func (r *BybitInstrumentRepository) SaveInstruments(ctx context.Context, instrum
 	}
 	defer tx.Rollback()
 
-	// Сначала удаляем все существующие инструменты
-	_, err = tx.ExecContext(ctx, "DELETE FROM bybit_instruments")
-	if err != nil {
-		logger.LogError("Failed to delete existing instruments: %v", err)
-		return err
-	}
-
-	// Подготавливаем запрос для вставки
+	// Подготавливаем запрос для вставки/обновления
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO bybit_instruments (
 			symbol, category, base_coin, quote_coin,
@@ -38,6 +31,20 @@ func (r *BybitInstrumentRepository) SaveInstruments(ctx context.Context, instrum
 			min_price, max_price, min_quantity, max_quantity,
 			quantity_step, price_step, status
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (symbol) DO UPDATE SET
+			category = EXCLUDED.category,
+			base_coin = EXCLUDED.base_coin,
+			quote_coin = EXCLUDED.quote_coin,
+			price_precision = EXCLUDED.price_precision,
+			quantity_precision = EXCLUDED.quantity_precision,
+			min_price = EXCLUDED.min_price,
+			max_price = EXCLUDED.max_price,
+			min_quantity = EXCLUDED.min_quantity,
+			max_quantity = EXCLUDED.max_quantity,
+			quantity_step = EXCLUDED.quantity_step,
+			price_step = EXCLUDED.price_step,
+			status = EXCLUDED.status,
+			updated_at = CURRENT_TIMESTAMP
 	`)
 	if err != nil {
 		logger.LogError("Failed to prepare insert statement: %v", err)
@@ -45,7 +52,7 @@ func (r *BybitInstrumentRepository) SaveInstruments(ctx context.Context, instrum
 	}
 	defer stmt.Close()
 
-	// Вставляем новые инструменты
+	// Вставляем или обновляем инструменты
 	for _, inst := range instruments {
 		_, err = stmt.ExecContext(ctx,
 			inst.Symbol,
@@ -63,7 +70,7 @@ func (r *BybitInstrumentRepository) SaveInstruments(ctx context.Context, instrum
 			inst.Status,
 		)
 		if err != nil {
-			logger.LogError("Failed to insert instrument %s: %v", inst.Symbol, err)
+			logger.LogError("Failed to insert/update instrument %s: %v", inst.Symbol, err)
 			return err
 		}
 	}
@@ -110,6 +117,8 @@ func (r *BybitInstrumentRepository) GetInstruments(ctx context.Context, category
 			&inst.QuantityStep,
 			&inst.PriceStep,
 			&inst.Status,
+			&inst.CreatedAt,
+			&inst.UpdatedAt,
 		)
 		if err != nil {
 			logger.LogError("Failed to scan instrument row: %v", err)
@@ -125,4 +134,22 @@ func (r *BybitInstrumentRepository) GetInstruments(ctx context.Context, category
 
 	logger.LogInfo("Retrieved %d instruments from database", len(instruments))
 	return instruments, nil
+}
+
+// Exists проверяет существование инструмента по символу
+func (r *BybitInstrumentRepository) Exists(ctx context.Context, symbol string) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1 FROM bybit_instruments
+			WHERE symbol = $1
+		)`
+
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, symbol).Scan(&exists)
+	if err != nil {
+		logger.LogError("Failed to check instrument existence: %v", err)
+		return false, err
+	}
+
+	return exists, nil
 }
