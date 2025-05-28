@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/shopspring/decimal"
 	"strings"
 	"time"
@@ -117,27 +118,27 @@ func (s *BybitService) updateInstruments(ctx context.Context) error {
 
 	var instruments []models.BybitInstrument
 	for _, instrument := range response.List {
-		pricePrecision := getPrecision(instrument.PriceFilter.TickSize)
-		quantityPrecision := getPrecision(instrument.LotSizeFilter.BasePrecision)
-
-		price, _ := decimal.NewFromString(instrument.PriceFilter.TickSize)
-		minQty, _ := decimal.NewFromString(instrument.LotSizeFilter.MinOrderQty)
-		maxQty, _ := decimal.NewFromString(instrument.LotSizeFilter.MaxOrderQty)
-
+		if instrument.Symbol == "BTCUSDT" {
+			logger.LogInfo("MinOrderQty: from %v to %v", instrument.LotSizeFilter.MinOrderQty, decimal.RequireFromString(instrument.LotSizeFilter.MinOrderQty))
+		}
 		instruments = append(instruments, models.BybitInstrument{
-			Symbol:            instrument.Symbol,
-			Category:          response.Category,
-			BaseCoin:          instrument.BaseCoin,
-			QuoteCoin:         instrument.QuoteCoin,
-			PricePrecision:    pricePrecision,
-			QuantityPrecision: quantityPrecision,
-			MinPrice:          decimal.Zero, // TODO: Добавить в API
-			MaxPrice:          decimal.Zero, // TODO: Добавить в API
-			MinQuantity:       minQty,
-			MaxQuantity:       maxQty,
-			QuantityStep:      decimal.NewFromInt(1), // TODO: Добавить в API
-			PriceStep:         price,
-			Status:            instrument.Status,
+			Symbol:           instrument.Symbol,
+			Category:         response.Category,
+			BaseCoin:         instrument.BaseCoin,
+			QuoteCoin:        instrument.QuoteCoin,
+			Innovation:       instrument.Innovation,
+			Status:           instrument.Status,
+			MarginTrading:    instrument.MarginTrading,
+			StTag:            instrument.StTag,
+			BasePrecision:    decimal.RequireFromString(instrument.LotSizeFilter.BasePrecision),
+			QuotePrecision:   decimal.RequireFromString(instrument.LotSizeFilter.QuotePrecision),
+			MinOrderQty:      decimal.RequireFromString(instrument.LotSizeFilter.MinOrderQty),
+			MaxOrderQty:      decimal.RequireFromString(instrument.LotSizeFilter.MaxOrderQty),
+			MinOrderAmt:      decimal.RequireFromString(instrument.LotSizeFilter.MinOrderAmt),
+			MaxOrderAmt:      decimal.RequireFromString(instrument.LotSizeFilter.MaxOrderAmt),
+			TickSize:         decimal.RequireFromString(instrument.PriceFilter.TickSize),
+			PriceLimitRatioX: decimal.RequireFromString(instrument.RiskParameters.PriceLimitRatioX),
+			PriceLimitRatioY: decimal.RequireFromString(instrument.RiskParameters.PriceLimitRatioY),
 		})
 	}
 
@@ -192,4 +193,43 @@ func getPrecision(s string) int {
 		return 0
 	}
 	return len(parts[1])
+}
+
+func (s *BybitService) UpdateInstruments(ctx context.Context) error {
+	// Получаем список инструментов из API
+	response, err := s.bybitClient.GetInstruments(ctx, "spot")
+	if err != nil {
+		return fmt.Errorf("failed to get instruments: %w", err)
+	}
+
+	// Преобразуем инструменты в модель
+	var modelInstruments []models.BybitInstrument
+	for _, inst := range response.List {
+		modelInstruments = append(modelInstruments, models.BybitInstrument{
+			Symbol:           inst.Symbol,
+			Category:         response.Category,
+			BaseCoin:         inst.BaseCoin,
+			QuoteCoin:        inst.QuoteCoin,
+			Innovation:       inst.Innovation,
+			Status:           inst.Status,
+			MarginTrading:    inst.MarginTrading,
+			StTag:            inst.StTag,
+			BasePrecision:    decimal.RequireFromString(inst.LotSizeFilter.BasePrecision),
+			QuotePrecision:   decimal.RequireFromString(inst.LotSizeFilter.QuotePrecision),
+			MinOrderQty:      decimal.RequireFromString(inst.LotSizeFilter.MinOrderQty),
+			MaxOrderQty:      decimal.RequireFromString(inst.LotSizeFilter.MaxOrderQty),
+			MinOrderAmt:      decimal.RequireFromString(inst.LotSizeFilter.MinOrderAmt),
+			MaxOrderAmt:      decimal.RequireFromString(inst.LotSizeFilter.MaxOrderAmt),
+			TickSize:         decimal.RequireFromString(inst.PriceFilter.TickSize),
+			PriceLimitRatioX: decimal.RequireFromString(inst.RiskParameters.PriceLimitRatioX),
+			PriceLimitRatioY: decimal.RequireFromString(inst.RiskParameters.PriceLimitRatioY),
+		})
+	}
+
+	// Сохраняем инструменты в базу данных
+	if err := s.bybitInstrumentRepo.SaveInstruments(ctx, modelInstruments); err != nil {
+		return fmt.Errorf("failed to save instruments: %w", err)
+	}
+
+	return nil
 }

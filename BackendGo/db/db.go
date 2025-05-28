@@ -27,7 +27,7 @@ func init() {
 
 func InitDB() (*sql.DB, error) {
 	dbConnectionStr = fmt.Sprintf(
-		"user=%s dbname=%s sslmode=disable password=%s host=%s", dbUser, dbName, dbPass, dbHost,
+		"user=%s dbname=%s sslmode=disable password=%s host=%s port=5432", dbUser, dbName, dbPass, dbHost,
 	)
 
 	db, err := sql.Open("postgres", dbConnectionStr)

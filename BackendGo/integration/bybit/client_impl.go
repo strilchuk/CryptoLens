@@ -663,4 +663,4 @@ func (c *client) generateSignature(timestamp string, queryParams string, account
 	h := hmac.New(sha256.New, []byte(account.APISecret))
 	h.Write([]byte(paramStr))
 	return hex.EncodeToString(h.Sum(nil))
-} 
+}
