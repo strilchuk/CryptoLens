@@ -14,7 +14,6 @@ type BybitServiceInterface interface {
 	GetInstruments(ctx context.Context, category string) ([]models.BybitInstrument, error)
 	StartInstrumentsUpdate(ctx context.Context)
 	StartWebSocket(ctx context.Context)
-	StartBackgroundTasks(ctx context.Context)
 }
 
 // BybitHandlerInterface определяет интерфейс для обработчика Bybit

@@ -159,6 +159,7 @@ func (c *WebSocketClient) startPing(ctx context.Context) {
 				err := c.conn.WriteJSON(map[string]string{"op": "ping"})
 				if err != nil {
 					logger.LogError("Failed to send ping: %v", err)
+					c.Close() // Закрываем соединение при ошибке пинга
 				}
 			}
 			c.mutex.Unlock()

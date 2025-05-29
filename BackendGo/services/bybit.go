@@ -254,42 +254,51 @@ func (s *BybitService) UpdateInstruments(ctx context.Context) error {
 // StartWebSocket запускает WebSocket-соединение и подписку на каналы
 func (s *BybitService) StartWebSocket(ctx context.Context) {
 	go func() {
-		// Получаем активные инструменты пользователей
-		instruments, err := s.bybitInstrumentRepo.GetInstruments(ctx, "spot")
-		if err != nil {
-			logger.LogError("Failed to get instruments for WebSocket: %v", err)
-			return
-		}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				// Получаем активные инструменты пользователей
+				instruments, err := s.bybitInstrumentRepo.GetInstruments(ctx, "spot")
+				if err != nil {
+					logger.LogError("Failed to get instruments for WebSocket: %v", err)
+					time.Sleep(5 * time.Second)
+					continue
+				}
 
-		// Формируем список каналов для подписки
-		var publicChannels []string
-		for _, inst := range instruments {
-			publicChannels = append(publicChannels,
-				fmt.Sprintf("ticker.%s", inst.Symbol),
-				fmt.Sprintf("orderbook.25.%s", inst.Symbol),
-				fmt.Sprintf("trade.%s", inst.Symbol),
-			)
-		}
+				// Формируем список каналов для подписки
+				var publicChannels []string
+				for _, inst := range instruments {
+					publicChannels = append(publicChannels,
+						fmt.Sprintf("ticker.%s", inst.Symbol),
+						fmt.Sprintf("orderbook.25.%s", inst.Symbol),
+						fmt.Sprintf("trade.%s", inst.Symbol),
+					)
+				}
 
-		// Подключаемся к WebSocket
-		if err := s.wsClient.Connect(ctx); err != nil {
-			logger.LogError("Failed to connect to WebSocket: %v", err)
-			return
-		}
+				// Подключаемся к WebSocket
+				if err := s.wsClient.Connect(ctx); err != nil {
+					logger.LogError("Failed to connect to WebSocket: %v", err)
+					time.Sleep(5 * time.Second)
+					continue
+				}
 
-		// Подписываемся на публичные каналы
-		if err := s.wsClient.Subscribe(ctx, publicChannels); err != nil {
-			logger.LogError("Failed to subscribe to public channels: %v", err)
-			return
-		}
+				// Подписываемся на публичные каналы
+				if err := s.wsClient.Subscribe(ctx, publicChannels); err != nil {
+					logger.LogError("Failed to subscribe to public channels: %v", err)
+					s.wsClient.Close()
+					time.Sleep(5 * time.Second)
+					continue
+				}
 
-		// Запускаем обработку сообщений
-		s.wsClient.StartMessageHandler(ctx, s.wsHandler.HandleMessage)
+				// Запускаем обработку сообщений
+				s.wsClient.StartMessageHandler(ctx, s.wsHandler.HandleMessage)
+
+				// Ждем завершения контекста
+				<-ctx.Done()
+				return
+			}
+		}
 	}()
-}
-
-// StartBackgroundTasks дополняем для запуска WebSocket
-func (s *BybitService) StartBackgroundTasks(ctx context.Context) {
-	s.StartInstrumentsUpdate(ctx)
-	s.StartWebSocket(ctx)
 }

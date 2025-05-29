@@ -89,4 +89,6 @@ func (c *Container) RegisterRoutes() {
 func (c *Container) StartBackgroundTasks(ctx context.Context) {
 	// Запускаем обновление инструментов
 	go c.BybitService.StartInstrumentsUpdate(ctx)
+	// Запускаем WebSocket
+	go c.BybitService.StartWebSocket(ctx)
 } 

@@ -5,6 +5,7 @@ import (
 	"CryptoLens_Backend/logger"
 	"context"
 	"encoding/json"
+	"strings"
 )
 
 // BybitWebSocketHandler обрабатывает WebSocket сообщения от Bybit
@@ -22,8 +23,18 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 	// Логируем входящее сообщение
 	logger.LogInfo("Получено WebSocket сообщение: %s", msg.Topic)
 
-	switch msg.Topic {
-	case "tickers":
+	// Определяем тип сообщения по топику
+	topicParts := strings.Split(msg.Topic, ".")
+	if len(topicParts) < 2 {
+		logger.LogError("Неверный формат топика: %s", msg.Topic)
+		return
+	}
+
+	messageType := topicParts[0]
+	//symbol := topicParts[1]
+
+	switch messageType {
+	case "ticker":
 		var tickerMsg bybit.TickerMessage
 		if err := json.Unmarshal(msg.Data, &tickerMsg); err != nil {
 			logger.LogError("Ошибка разбора сообщения тикера: %v", err)
@@ -39,7 +50,7 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 		}
 		h.handleOrderBookMessage(ctx, orderBookMsg)
 
-	case "trades":
+	case "trade":
 		var tradeMsg bybit.TradeMessage
 		if err := json.Unmarshal(msg.Data, &tradeMsg); err != nil {
 			logger.LogError("Ошибка разбора сообщения о сделке: %v", err)
@@ -48,27 +59,27 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 		h.handleTradeMessage(ctx, tradeMsg)
 
 	default:
-		logger.LogInfo("Неизвестный тип сообщения: %s", msg.Topic)
+		logger.LogInfo("Неизвестный тип сообщения: %s", messageType)
 	}
 }
 
 // handleTickerMessage обрабатывает сообщения тикера
 func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg bybit.TickerMessage) {
-	logger.LogInfo("Тикер %s: цена=%s, объем=%s", 
+	logger.LogInfo("Тикер %s: цена=%s, объем=%s",
 		msg.Symbol, msg.LastPrice, msg.Volume24h)
 	// Здесь можно добавить дополнительную логику обработки тикера
 }
 
 // handleOrderBookMessage обрабатывает сообщения книги ордеров
 func (h *BybitWebSocketHandler) handleOrderBookMessage(ctx context.Context, msg bybit.OrderBookMessage) {
-	logger.LogInfo("Книга ордеров %s: %d бидов, %d асков", 
+	logger.LogInfo("Книга ордеров %s: %d бидов, %d асков",
 		msg.Symbol, len(msg.Bids), len(msg.Asks))
 	// Здесь можно добавить дополнительную логику обработки книги ордеров
 }
 
 // handleTradeMessage обрабатывает сообщения о сделках
 func (h *BybitWebSocketHandler) handleTradeMessage(ctx context.Context, msg bybit.TradeMessage) {
-	logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s", 
+	logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
 		msg.Symbol, msg.Price, msg.Size, msg.Side)
 	// Здесь можно добавить дополнительную логику обработки сделок
-} 
+}
