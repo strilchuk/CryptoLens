@@ -143,4 +143,37 @@ func (r *UserInstrumentRepository) Exists(ctx context.Context, userID string, sy
 	}
 
 	return exists, nil
+}
+
+// GetActiveInstruments получает все активные инструменты пользователей
+func (r *UserInstrumentRepository) GetActiveInstruments(ctx context.Context) ([]string, error) {
+	query := `
+		SELECT DISTINCT symbol 
+		FROM user_instruments 
+		WHERE is_active = true 
+		AND deleted_at IS NULL`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		logger.LogError("Failed to get active instruments: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var symbols []string
+	for rows.Next() {
+		var symbol string
+		if err := rows.Scan(&symbol); err != nil {
+			logger.LogError("Failed to scan symbol: %v", err)
+			return nil, err
+		}
+		symbols = append(symbols, symbol)
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.LogError("Error iterating active instruments: %v", err)
+		return nil, err
+	}
+
+	return symbols, nil
 } 

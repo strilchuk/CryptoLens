@@ -29,30 +29,36 @@ type WebSocketMessage struct {
 
 // TickerMessage представляет сообщение тикера
 type TickerMessage struct {
-	Symbol    string `json:"symbol"`
-	LastPrice string `json:"lastPrice"`
-	Bid1Price string `json:"bid1Price"`
-	Bid1Size  string `json:"bid1Size"`
-	Ask1Price string `json:"ask1Price"`
-	Ask1Size  string `json:"ask1Size"`
-	Volume24h string `json:"volume24h"`
+	Symbol        string `json:"symbol"`
+	LastPrice     string `json:"lastPrice"`
+	HighPrice24h  string `json:"highPrice24h"`
+	LowPrice24h   string `json:"lowPrice24h"`
+	PrevPrice24h  string `json:"prevPrice24h"`
+	Volume24h     string `json:"volume24h"`
+	Turnover24h   string `json:"turnover24h"`
+	Price24hPcnt  string `json:"price24hPcnt"`
+	UsdIndexPrice string `json:"usdIndexPrice"`
 }
 
 // OrderBookMessage представляет сообщение книги ордеров
 type OrderBookMessage struct {
-	Symbol   string      `json:"symbol"`
-	Bids     [][2]string `json:"bids"`
-	Asks     [][2]string `json:"asks"`
-	UpdateID int64       `json:"updateId"`
+	Symbol string      `json:"s"`
+	Bids   [][2]string `json:"b"`
+	Asks   [][2]string `json:"a"`
+	UpdateID int64     `json:"u"`
+	Seq     int64      `json:"seq"`
 }
 
 // TradeMessage представляет сообщение о сделке
 type TradeMessage struct {
-	Symbol string `json:"symbol"`
-	Price  string `json:"price"`
-	Size   string `json:"size"`
-	Side   string `json:"side"`
-	Time   int64  `json:"ts"`
+	ID        string `json:"i"`
+	Timestamp int64  `json:"T"`
+	Price     string `json:"p"`
+	Volume    string `json:"v"`
+	Side      string `json:"S"`
+	Symbol    string `json:"s"`
+	IsBlockTrade bool `json:"BT"`
+	IsRPI      bool   `json:"RPI"`
 }
 
 // NewWebSocketClient создает новый WebSocket-клиент
@@ -78,6 +84,9 @@ func (c *WebSocketClient) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to connect to WebSocket: %w", err)
 	}
 	c.conn = conn
+
+	// Логируем успешное подключение
+	logger.LogInfo("Успешно подключились к WebSocket: %s", c.url)
 
 	// Запускаем пинг каждые 20 секунд
 	go c.startPing(ctx)

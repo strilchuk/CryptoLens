@@ -24,6 +24,7 @@ type BybitService struct {
 	db                  *sql.DB
 	userService         *UserService
 	bybitInstrumentRepo *repositories.BybitInstrumentRepository
+	userInstrumentRepo  *repositories.UserInstrumentRepository
 	wsHandler           *handlers.BybitWebSocketHandler
 	wsMutex             sync.Mutex
 }
@@ -44,6 +45,7 @@ func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserServ
 		db:                  db,
 		userService:         userService,
 		bybitInstrumentRepo: repositories.NewBybitInstrumentRepository(db),
+		userInstrumentRepo:  repositories.NewUserInstrumentRepository(db),
 		wsHandler:           handlers.NewBybitWebSocketHandler(),
 	}
 }
@@ -259,23 +261,31 @@ func (s *BybitService) StartWebSocket(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			default:
-				// Получаем активные инструменты пользователей
-				instruments, err := s.bybitInstrumentRepo.GetInstruments(ctx, "spot")
+				// Получаем активные инструменты через репозиторий
+				activeSymbols, err := s.userInstrumentRepo.GetActiveInstruments(ctx)
 				if err != nil {
-					logger.LogError("Failed to get instruments for WebSocket: %v", err)
+					logger.LogError("Failed to get active instruments: %v", err)
 					time.Sleep(5 * time.Second)
 					continue
 				}
 
-				// Формируем список каналов для подписки
+				// Формируем каналы для подписки
 				var publicChannels []string
-				for _, inst := range instruments {
+				for _, symbol := range activeSymbols {
 					publicChannels = append(publicChannels,
-						fmt.Sprintf("ticker.%s", inst.Symbol),
-						fmt.Sprintf("orderbook.25.%s", inst.Symbol),
-						fmt.Sprintf("trade.%s", inst.Symbol),
+						fmt.Sprintf("tickers.%s", symbol),
+						fmt.Sprintf("orderbook.50.%s", symbol),
+						fmt.Sprintf("publicTrade.%s", symbol),
 					)
 				}
+
+				// Логируем каналы
+				if len(publicChannels) == 0 {
+					logger.LogInfo("Нет активных инструментов для подписки")
+					time.Sleep(5 * time.Second)
+					continue
+				}
+				logger.LogInfo("Подписываемся на каналы для %d активных инструментов: %v", len(activeSymbols), publicChannels)
 
 				// Подключаемся к WebSocket
 				if err := s.wsClient.Connect(ctx); err != nil {
@@ -283,6 +293,9 @@ func (s *BybitService) StartWebSocket(ctx context.Context) {
 					time.Sleep(5 * time.Second)
 					continue
 				}
+
+				// Запускаем обработку сообщений
+				s.wsClient.StartMessageHandler(ctx, s.wsHandler.HandleMessage)
 
 				// Подписываемся на публичные каналы
 				if err := s.wsClient.Subscribe(ctx, publicChannels); err != nil {
@@ -292,8 +305,8 @@ func (s *BybitService) StartWebSocket(ctx context.Context) {
 					continue
 				}
 
-				// Запускаем обработку сообщений
-				s.wsClient.StartMessageHandler(ctx, s.wsHandler.HandleMessage)
+				// Логируем успешную подписку
+				logger.LogInfo("Успешно подписались на %d каналов для %d активных инструментов", len(publicChannels), len(activeSymbols))
 
 				// Ждем завершения контекста
 				<-ctx.Done()

@@ -20,8 +20,26 @@ func NewBybitWebSocketHandler() *BybitWebSocketHandler {
 
 // HandleMessage обрабатывает входящие WebSocket сообщения
 func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.WebSocketMessage) {
-	// Логируем входящее сообщение
-	logger.LogInfo("Получено WebSocket сообщение: %s", msg.Topic)
+	// Логируем сырое сообщение
+	//logger.LogDebug("WebSocket сообщение: Topic=%s, Data=%s", msg.Topic, string(msg.Data))
+
+	if msg.Topic == "" {
+		logger.LogDebug("Сообщение без топика: %s", string(msg.Data))
+		// Проверяем подтверждение подписки
+		var subResponse struct {
+			Op      string   `json:"op"`
+			Success bool     `json:"success"`
+			Args    []string `json:"args"`
+		}
+		if err := json.Unmarshal(msg.Data, &subResponse); err == nil && subResponse.Op == "subscribe" {
+			if subResponse.Success {
+				logger.LogInfo("Подписка подтверждена для каналов: %v", subResponse.Args)
+			} else {
+				logger.LogError("Ошибка подписки: %s", string(msg.Data))
+			}
+		}
+		return
+	}
 
 	// Определяем тип сообщения по топику
 	topicParts := strings.Split(msg.Topic, ".")
@@ -34,7 +52,7 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 	//symbol := topicParts[1]
 
 	switch messageType {
-	case "ticker":
+	case "tickers":
 		var tickerMsg bybit.TickerMessage
 		if err := json.Unmarshal(msg.Data, &tickerMsg); err != nil {
 			logger.LogError("Ошибка разбора сообщения тикера: %v", err)
@@ -50,13 +68,15 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 		}
 		h.handleOrderBookMessage(ctx, orderBookMsg)
 
-	case "trade":
-		var tradeMsg bybit.TradeMessage
-		if err := json.Unmarshal(msg.Data, &tradeMsg); err != nil {
+	case "publicTrade":
+		var tradeMsgs []bybit.TradeMessage
+		if err := json.Unmarshal(msg.Data, &tradeMsgs); err != nil {
 			logger.LogError("Ошибка разбора сообщения о сделке: %v", err)
 			return
 		}
-		h.handleTradeMessage(ctx, tradeMsg)
+		for _, tradeMsg := range tradeMsgs {
+			h.handleTradeMessage(ctx, tradeMsg)
+		}
 
 	default:
 		logger.LogInfo("Неизвестный тип сообщения: %s", messageType)
@@ -80,6 +100,6 @@ func (h *BybitWebSocketHandler) handleOrderBookMessage(ctx context.Context, msg 
 // handleTradeMessage обрабатывает сообщения о сделках
 func (h *BybitWebSocketHandler) handleTradeMessage(ctx context.Context, msg bybit.TradeMessage) {
 	logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
-		msg.Symbol, msg.Price, msg.Size, msg.Side)
+		msg.Symbol, msg.Price, msg.Volume, msg.Side)
 	// Здесь можно добавить дополнительную логику обработки сделок
 }
