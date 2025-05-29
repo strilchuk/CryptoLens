@@ -1,6 +1,7 @@
 package bybit
 
 import (
+	"CryptoLens_Backend/logger"
 	"bytes"
 	"context"
 	"crypto/hmac"
@@ -8,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -54,15 +56,34 @@ func (c *client) GetWalletBalance(ctx context.Context, account *BybitAccount) (*
 	req.Header.Set("X-BAPI-SIGN", signature)
 	req.Header.Set("Content-Type", "application/json")
 
+	//// Формируем curl запрос для логирования
+	//curlCmd := fmt.Sprintf("curl -X GET '%s/v5/account/wallet-balance?%s' \\\n"+
+	//	"  -H 'X-BAPI-API-KEY: %s' \\\n"+
+	//	"  -H 'X-BAPI-TIMESTAMP: %s' \\\n"+
+	//	"  -H 'X-BAPI-RECV-WINDOW: %d' \\\n"+
+	//	"  -H 'X-BAPI-SIGN: %s' \\\n"+
+	//	"  -H 'Content-Type: application/json'",
+	//	c.baseURL, queryParams, account.APIKey, timestamp, c.recvWindow, signature)
+	//logger.LogInfo("Curl запрос:\n%s", curlCmd)
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
+	// Читаем тело ответа
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка чтения тела ответа: %w", err)
+	}
+
+	// Логируем ответ сервера
+	//logger.LogInfo("Ответ сервера (статус %d):\n%s", resp.StatusCode, string(body))
+
 	var bybitResp BybitResponse
-	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
-		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
+	if err := json.Unmarshal(body, &bybitResp); err != nil {
+		return nil, fmt.Errorf("ошибка декодирования ответа: %w\nТело ответа: %s", err, string(body))
 	}
 
 	if !bybitResp.IsSuccess() {
@@ -74,7 +95,7 @@ func (c *client) GetWalletBalance(ctx context.Context, account *BybitAccount) (*
 	if err != nil {
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
-	log.Printf("Bybit API Response: %s", string(resultBytes))
+	logger.LogInfo("Bybit API Response: %s", string(resultBytes))
 
 	// Преобразуем result в map[string]interface{}
 	resultMap, ok := bybitResp.Result.(map[string]interface{})
@@ -107,15 +128,30 @@ func (c *client) GetInstruments(ctx context.Context, category string) (*BybitIns
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
+	// Формируем curl запрос для логирования
+	//curlCmd := fmt.Sprintf("curl -X GET '%s/v5/market/instruments-info?%s' \\\n"+
+	//	"  -H 'Content-Type: application/json'",
+	//c.baseURL, queryParams.Encode())
+	//logger.LogInfo("Curl запрос:\n%s", curlCmd)
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
+	// Читаем тело ответа
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка чтения тела ответа: %w", err)
+	}
+
+	// Логируем ответ сервера
+	//logger.LogInfo("Ответ сервера (статус %d):\n%s", resp.StatusCode, string(body))
+
 	var bybitResp BybitResponse
-	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
-		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
+	if err := json.Unmarshal(body, &bybitResp); err != nil {
+		return nil, fmt.Errorf("ошибка декодирования ответа: %w\nТело ответа: %s", err, string(body))
 	}
 
 	if !bybitResp.IsSuccess() {

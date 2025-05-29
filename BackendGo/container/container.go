@@ -7,6 +7,7 @@ import (
 	"CryptoLens_Backend/repositories"
 	"CryptoLens_Backend/routes"
 	"CryptoLens_Backend/services"
+	"CryptoLens_Backend/types"
 	"context"
 	"database/sql"
 	"strconv"
@@ -15,16 +16,16 @@ import (
 type Container struct {
 	DB                   *sql.DB
 	UserRepo             *repositories.UserRepository
-	UserService          *services.UserService
+	UserService          types.UserServiceInterface
 	UserHandler          *handlers.UserHandler
 	UserRoutes           *routes.UserRoutes
 	BybitClient          bybit.Client
-	BybitService         *services.BybitService
-	BybitHandler         *handlers.BybitHandler
+	BybitService         types.BybitServiceInterface
+	BybitHandler         types.BybitHandlerInterface
 	BybitRoutes          *routes.BybitRoutes
 	UserInstrumentRepo   *repositories.UserInstrumentRepository
 	BybitInstrumentRepo  *repositories.BybitInstrumentRepository
-	UserInstrumentService *services.UserInstrumentService
+	UserInstrumentService types.UserInstrumentServiceInterface
 	UserInstrumentHandler *handlers.UserInstrumentHandler
 	UserInstrumentRoutes  *routes.UserInstrumentRoutes
 }

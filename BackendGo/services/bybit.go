@@ -2,6 +2,7 @@ package services
 
 import (
 	"CryptoLens_Backend/env"
+	"CryptoLens_Backend/handlers"
 	"CryptoLens_Backend/integration/bybit"
 	"CryptoLens_Backend/logger"
 	"CryptoLens_Backend/models"
@@ -11,23 +12,39 @@ import (
 	"errors"
 	"fmt"
 	"github.com/shopspring/decimal"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type BybitService struct {
 	bybitClient         bybit.Client
+	wsClient            *bybit.WebSocketClient
 	db                  *sql.DB
 	userService         *UserService
 	bybitInstrumentRepo *repositories.BybitInstrumentRepository
+	wsHandler           *handlers.BybitWebSocketHandler
+	wsMutex             sync.Mutex
 }
 
 func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserService) *BybitService {
+	// Инициализация WebSocket-клиента
+	recvWindow, _ := strconv.Atoi(env.GetBybitRecvWindow())
+	apiMode := env.GetBybitApiMode()
+	wsURL := env.GetBybitWsUrl() + "/v5/public/spot"
+	if apiMode == "test" {
+		wsURL = env.GetBybitWsTestUrl() + "/v5/public/spot"
+	}
+	wsClient := bybit.NewWebSocketClient(wsURL, recvWindow)
+
 	return &BybitService{
 		bybitClient:         bybitClient,
+		wsClient:            wsClient,
 		db:                  db,
 		userService:         userService,
 		bybitInstrumentRepo: repositories.NewBybitInstrumentRepository(db),
+		wsHandler:           handlers.NewBybitWebSocketHandler(),
 	}
 }
 
@@ -119,7 +136,7 @@ func (s *BybitService) updateInstruments(ctx context.Context) error {
 	var instruments []models.BybitInstrument
 	for _, instrument := range response.List {
 		if instrument.Symbol == "BTCUSDT" {
-			logger.LogInfo("MinOrderQty: from %v to %v", instrument.LotSizeFilter.MinOrderQty, decimal.RequireFromString(instrument.LotSizeFilter.MinOrderQty))
+			//logger.LogInfo("MinOrderQty: from %v to %v", instrument.LotSizeFilter.MinOrderQty, decimal.RequireFromString(instrument.LotSizeFilter.MinOrderQty))
 		}
 		instruments = append(instruments, models.BybitInstrument{
 			Symbol:           instrument.Symbol,
@@ -232,4 +249,47 @@ func (s *BybitService) UpdateInstruments(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// StartWebSocket запускает WebSocket-соединение и подписку на каналы
+func (s *BybitService) StartWebSocket(ctx context.Context) {
+	go func() {
+		// Получаем активные инструменты пользователей
+		instruments, err := s.bybitInstrumentRepo.GetInstruments(ctx, "spot")
+		if err != nil {
+			logger.LogError("Failed to get instruments for WebSocket: %v", err)
+			return
+		}
+
+		// Формируем список каналов для подписки
+		var publicChannels []string
+		for _, inst := range instruments {
+			publicChannels = append(publicChannels,
+				fmt.Sprintf("ticker.%s", inst.Symbol),
+				fmt.Sprintf("orderbook.25.%s", inst.Symbol),
+				fmt.Sprintf("trade.%s", inst.Symbol),
+			)
+		}
+
+		// Подключаемся к WebSocket
+		if err := s.wsClient.Connect(ctx); err != nil {
+			logger.LogError("Failed to connect to WebSocket: %v", err)
+			return
+		}
+
+		// Подписываемся на публичные каналы
+		if err := s.wsClient.Subscribe(ctx, publicChannels); err != nil {
+			logger.LogError("Failed to subscribe to public channels: %v", err)
+			return
+		}
+
+		// Запускаем обработку сообщений
+		s.wsClient.StartMessageHandler(ctx, s.wsHandler.HandleMessage)
+	}()
+}
+
+// StartBackgroundTasks дополняем для запуска WebSocket
+func (s *BybitService) StartBackgroundTasks(ctx context.Context) {
+	s.StartInstrumentsUpdate(ctx)
+	s.StartWebSocket(ctx)
 }

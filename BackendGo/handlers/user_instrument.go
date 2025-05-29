@@ -2,16 +2,16 @@ package handlers
 
 import (
 	"CryptoLens_Backend/models"
-	"CryptoLens_Backend/services"
+	"CryptoLens_Backend/types"
 	"encoding/json"
 	"net/http"
 )
 
 type UserInstrumentHandler struct {
-	userInstrumentService *services.UserInstrumentService
+	userInstrumentService types.UserInstrumentServiceInterface
 }
 
-func NewUserInstrumentHandler(userInstrumentService *services.UserInstrumentService) *UserInstrumentHandler {
+func NewUserInstrumentHandler(userInstrumentService types.UserInstrumentServiceInterface) *UserInstrumentHandler {
 	return &UserInstrumentHandler{
 		userInstrumentService: userInstrumentService,
 	}

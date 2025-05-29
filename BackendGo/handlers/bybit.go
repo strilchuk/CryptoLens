@@ -1,17 +1,17 @@
 package handlers
 
 import (
-	"CryptoLens_Backend/services"
+	"CryptoLens_Backend/types"
 	"encoding/json"
 	"net/http"
 	"strings"
 )
 
 type BybitHandler struct {
-	bybitService *services.BybitService
+	bybitService types.BybitServiceInterface
 }
 
-func NewBybitHandler(bybitService *services.BybitService) *BybitHandler {
+func NewBybitHandler(bybitService types.BybitServiceInterface) *BybitHandler {
 	return &BybitHandler{
 		bybitService: bybitService,
 	}

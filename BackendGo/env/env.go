@@ -53,6 +53,14 @@ func GetBybitApiTestUrl() string {
 	return os.Getenv("BYBIT_API_TEST_URL")
 }
 
+func GetBybitWsUrl() string {
+	return os.Getenv("BYBIT_WS_URL")
+}
+
+func GetBybitWsTestUrl() string {
+	return os.Getenv("BYBIT_WS_TEST_URL")
+}
+
 func GetBybitRecvWindow() string {
 	return os.Getenv("BYBIT_RECV_WINDOW")
 }
