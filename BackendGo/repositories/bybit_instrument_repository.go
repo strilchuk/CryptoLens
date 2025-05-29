@@ -167,3 +167,49 @@ func (r *BybitInstrumentRepository) Exists(ctx context.Context, symbol string) (
 
 	return exists, nil
 }
+
+// GetBySymbol получает инструмент по символу
+func (r *BybitInstrumentRepository) GetBySymbol(ctx context.Context, symbol string) (*models.BybitInstrument, error) {
+	query := `
+		SELECT symbol, category, base_coin, quote_coin,
+			innovation, status, margin_trading, st_tag,
+			base_precision, quote_precision,
+			min_order_qty, max_order_qty,
+			min_order_amt, max_order_amt,
+			tick_size, price_limit_ratio_x, price_limit_ratio_y,
+			created_at, updated_at
+		FROM bybit_instruments
+		WHERE symbol = $1`
+
+	var inst models.BybitInstrument
+	err := r.db.QueryRowContext(ctx, query, symbol).Scan(
+		&inst.Symbol,
+		&inst.Category,
+		&inst.BaseCoin,
+		&inst.QuoteCoin,
+		&inst.Innovation,
+		&inst.Status,
+		&inst.MarginTrading,
+		&inst.StTag,
+		&inst.BasePrecision,
+		&inst.QuotePrecision,
+		&inst.MinOrderQty,
+		&inst.MaxOrderQty,
+		&inst.MinOrderAmt,
+		&inst.MaxOrderAmt,
+		&inst.TickSize,
+		&inst.PriceLimitRatioX,
+		&inst.PriceLimitRatioY,
+		&inst.CreatedAt,
+		&inst.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		logger.LogError("Failed to get instrument by symbol: %v", err)
+		return nil, err
+	}
+
+	return &inst, nil
+}

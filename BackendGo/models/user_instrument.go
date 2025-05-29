@@ -11,6 +11,7 @@ type UserInstrument struct {
 	CreatedAt *time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at" db:"updated_at"`
 	DeletedAt *time.Time `json:"deleted_at" db:"deleted_at"`
+	BybitInstrument *BybitInstrument `json:"bybit_instrument,omitempty"`
 }
 
 // CreateUserInstrumentRequest представляет запрос на создание связи
@@ -32,4 +33,5 @@ type UserInstrumentResponse struct {
 	IsActive  bool       `json:"is_active"`
 	CreatedAt *time.Time `json:"created_at"`
 	UpdatedAt *time.Time `json:"updated_at"`
+	BybitInstrument *BybitInstrument `json:"bybit_instrument,omitempty"`
 } 

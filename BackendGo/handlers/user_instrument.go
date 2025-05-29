@@ -66,6 +66,7 @@ func (h *UserInstrumentHandler) GetUserInstruments(w http.ResponseWriter, r *htt
 			IsActive:  instrument.IsActive,
 			CreatedAt: instrument.CreatedAt,
 			UpdatedAt: instrument.UpdatedAt,
+			BybitInstrument: instrument.BybitInstrument,
 		}
 	}
 

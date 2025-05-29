@@ -51,7 +51,22 @@ func (s *UserInstrumentService) AddInstrument(ctx context.Context, userID string
 
 // GetUserInstruments получает все инструменты пользователя
 func (s *UserInstrumentService) GetUserInstruments(ctx context.Context, userID string) ([]models.UserInstrument, error) {
-	return s.userInstrumentRepo.GetByUserID(ctx, userID)
+	instruments, err := s.userInstrumentRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Получаем данные по каждому инструменту из таблицы bybit_instruments
+	for i := range instruments {
+		bybitInstrument, err := s.bybitInstrumentRepo.GetBySymbol(ctx, instruments[i].Symbol)
+		if err != nil {
+			logger.LogError("Failed to get bybit instrument for symbol %s: %v", instruments[i].Symbol, err)
+			continue
+		}
+		instruments[i].BybitInstrument = bybitInstrument
+	}
+
+	return instruments, nil
 }
 
 // UpdateInstrumentStatus обновляет статус инструмента пользователя
