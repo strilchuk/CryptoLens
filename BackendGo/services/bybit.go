@@ -29,6 +29,7 @@ type BybitService struct {
 	userInstrumentRepo  *repositories.UserInstrumentRepository
 	wsHandler           *handlers.BybitWebSocketHandler
 	strategyManager     *trading.StrategyManager
+	userStrategyService *UserStrategyService
 	wsMutex             sync.Mutex
 }
 
@@ -41,6 +42,8 @@ func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserServ
 	}
 	wsClient := bybit.NewWebSocketClient(wsURL, recvWindow, "", "")
 	strategyManager := trading.NewStrategyManager(bybitClient)
+	userStrategyRepo := repositories.NewUserStrategyRepository(db)
+	userStrategyService := NewUserStrategyService(userStrategyRepo, strategyManager)
 
 	return &BybitService{
 		bybitClient:         bybitClient,
@@ -52,6 +55,7 @@ func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserServ
 		userInstrumentRepo:  repositories.NewUserInstrumentRepository(db),
 		wsHandler:           handlers.NewBybitWebSocketHandler(strategyManager),
 		strategyManager:     strategyManager,
+		userStrategyService: userStrategyService,
 	}
 }
 
@@ -268,9 +272,6 @@ func (s *BybitService) AddTestStrategy(userID string) {
 // StartWebSocket запускает WebSocket-соединение и подписку на каналы
 func (s *BybitService) StartWebSocket(ctx context.Context) {
 	go func() {
-		// Добавляем тестовую стратегию
-		s.AddTestStrategy("bf1a50e7-e321-4567-9eee-e6f3b4743917")
-
 		for {
 			select {
 			case <-ctx.Done():
@@ -461,4 +462,8 @@ func (s *BybitService) closePrivateWebSockets() {
 		delete(s.privateWsClients, userID)
 		logger.LogInfo("Закрыто приватное WebSocket-соединение для userID: %s", userID)
 	}
+}
+
+func (s *BybitService) GetStrategyManager() *trading.StrategyManager {
+	return s.strategyManager
 }

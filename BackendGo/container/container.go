@@ -28,6 +28,10 @@ type Container struct {
 	UserInstrumentService types.UserInstrumentServiceInterface
 	UserInstrumentHandler *handlers.UserInstrumentHandler
 	UserInstrumentRoutes  *routes.UserInstrumentRoutes
+	UserStrategyRepo      *repositories.UserStrategyRepository
+	UserStrategyService   *services.UserStrategyService
+	UserStrategyHandler   *handlers.UserStrategyHandler
+	UserStrategyRoutes    *routes.UserStrategyRoutes
 }
 
 func NewContainer(db *sql.DB, jwtKey []byte) *Container {
@@ -35,6 +39,7 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 	userRepo := repositories.NewUserRepository(db)
 	userInstrumentRepo := repositories.NewUserInstrumentRepository(db)
 	bybitInstrumentRepo := repositories.NewBybitInstrumentRepository(db)
+	userStrategyRepo := repositories.NewUserStrategyRepository(db)
 
 	// Инициализация клиента Bybit
 	recvWindow, _ := strconv.Atoi(env.GetBybitRecvWindow())
@@ -51,16 +56,19 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 	userService := services.NewUserService(userRepo, jwtKey, db)
 	userInstrumentService := services.NewUserInstrumentService(userInstrumentRepo, bybitInstrumentRepo)
 	bybitService := services.NewBybitService(bybitClient, db, userService)
+	userStrategyService := services.NewUserStrategyService(userStrategyRepo, bybitService.GetStrategyManager())
 
 	// Инициализация обработчиков
 	userHandler := handlers.NewUserHandler(userService)
 	userInstrumentHandler := handlers.NewUserInstrumentHandler(userInstrumentService)
 	bybitHandler := handlers.NewBybitHandler(bybitService)
+	userStrategyHandler := handlers.NewUserStrategyHandler(userStrategyService)
 
 	// Инициализация маршрутов
 	userRoutes := routes.NewUserRoutes(userHandler)
 	userInstrumentRoutes := routes.NewUserInstrumentRoutes(userInstrumentHandler)
 	bybitRoutes := routes.NewBybitRoutes(bybitHandler)
+	userStrategyRoutes := routes.NewUserStrategyRoutes(userStrategyHandler)
 
 	return &Container{
 		DB:                    db,
@@ -77,6 +85,10 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 		UserInstrumentService: userInstrumentService,
 		UserInstrumentHandler: userInstrumentHandler,
 		UserInstrumentRoutes:  userInstrumentRoutes,
+		UserStrategyRepo:      userStrategyRepo,
+		UserStrategyService:   userStrategyService,
+		UserStrategyHandler:   userStrategyHandler,
+		UserStrategyRoutes:    userStrategyRoutes,
 	}
 }
 
@@ -84,6 +96,7 @@ func (c *Container) RegisterRoutes() {
 	c.UserRoutes.Register()
 	c.UserInstrumentRoutes.Register()
 	c.BybitRoutes.Register()
+	c.UserStrategyRoutes.Register()
 }
 
 func (c *Container) StartBackgroundTasks(ctx context.Context) {

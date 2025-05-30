@@ -3,6 +3,7 @@ package types
 import (
 	"CryptoLens_Backend/integration/bybit"
 	"CryptoLens_Backend/models"
+	"CryptoLens_Backend/trading"
 	"context"
 	"net/http"
 )
@@ -15,6 +16,7 @@ type BybitServiceInterface interface {
 	StartInstrumentsUpdate(ctx context.Context)
 	StartWebSocket(ctx context.Context)
 	StartPrivateWebSocket(ctx context.Context)
+	GetStrategyManager() *trading.StrategyManager
 }
 
 // BybitHandlerInterface определяет интерфейс для обработчика Bybit
