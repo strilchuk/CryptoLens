@@ -262,13 +262,6 @@ func (s *BybitService) UpdateInstruments(ctx context.Context) error {
 	return nil
 }
 
-// AddTestStrategy добавляет тестовую стратегию для пользователя
-func (s *BybitService) AddTestStrategy(userID string) {
-	strategy := trading.NewTestStrategy(userID)
-	s.strategyManager.AddStrategy(userID, strategy)
-	go strategy.Start(context.Background())
-}
-
 // StartWebSocket запускает WebSocket-соединение и подписку на каналы
 func (s *BybitService) StartWebSocket(ctx context.Context) {
 	go func() {

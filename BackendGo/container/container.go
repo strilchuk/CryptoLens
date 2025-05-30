@@ -4,6 +4,7 @@ import (
 	"CryptoLens_Backend/env"
 	"CryptoLens_Backend/handlers"
 	"CryptoLens_Backend/integration/bybit"
+	"CryptoLens_Backend/logger"
 	"CryptoLens_Backend/repositories"
 	"CryptoLens_Backend/routes"
 	"CryptoLens_Backend/services"
@@ -109,6 +110,11 @@ func (c *Container) RegisterRoutes() {
 }
 
 func (c *Container) StartBackgroundTasks(ctx context.Context) {
+	// Загружаем активные стратегии
+	if err := c.UserStrategyService.LoadActiveStrategies(ctx); err != nil {
+		logger.LogError("Ошибка при загрузке активных стратегий: %v", err)
+	}
+
 	// Запускаем обновление инструментов
 	go c.BybitService.StartInstrumentsUpdate(ctx)
 	// Запускаем WebSocket

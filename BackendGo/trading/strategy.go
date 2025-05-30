@@ -3,6 +3,7 @@ package trading
 import (
 	"CryptoLens_Backend/integration/bybit"
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -156,4 +157,27 @@ func (m *StrategyManager) Stop(ctx context.Context) {
 			s.Stop(ctx)
 		}
 	}
+}
+
+// GetStrategies возвращает все стратегии пользователя
+func (m *StrategyManager) GetStrategies(userID string) []Strategy {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return m.strategies[userID]
+}
+
+// GetStrategiesInfo возвращает информацию о стратегиях в менеджере
+func (m *StrategyManager) GetStrategiesInfo() map[string][]string {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	
+	info := make(map[string][]string)
+	for userID, strategies := range m.strategies {
+		var strategyNames []string
+		for _, s := range strategies {
+			strategyNames = append(strategyNames, fmt.Sprintf("%T", s))
+		}
+		info[userID] = strategyNames
+	}
+	return info
 } 

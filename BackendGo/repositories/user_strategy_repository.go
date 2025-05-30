@@ -4,6 +4,7 @@ import (
 	"CryptoLens_Backend/models"
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -131,4 +132,31 @@ func (r *UserStrategyRepository) GetActiveStrategies(ctx context.Context) ([]mod
 	}
 
 	return strategies, nil
-} 
+}
+
+// GetByID получает стратегию по ID
+func (r *UserStrategyRepository) GetByID(ctx context.Context, id string) (*models.UserStrategy, error) {
+	var strategy models.UserStrategy
+	err := r.db.QueryRowContext(ctx,
+		`SELECT id, user_id, strategy_name, is_active, created_at, updated_at 
+		FROM user_strategies 
+		WHERE id = $1 AND deleted_at IS NULL`,
+		id,
+	).Scan(
+		&strategy.ID,
+		&strategy.UserID,
+		&strategy.StrategyName,
+		&strategy.IsActive,
+		&strategy.CreatedAt,
+		&strategy.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("стратегия не найдена")
+		}
+		return nil, err
+	}
+
+	return &strategy, nil
+}
