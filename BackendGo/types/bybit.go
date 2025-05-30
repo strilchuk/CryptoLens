@@ -17,6 +17,7 @@ type BybitServiceInterface interface {
 	StartWebSocket(ctx context.Context)
 	StartPrivateWebSocket(ctx context.Context)
 	GetStrategyManager() *trading.StrategyManager
+	GetUserStrategyService() UserStrategyServiceInterface
 }
 
 // BybitHandlerInterface определяет интерфейс для обработчика Bybit
@@ -24,4 +25,10 @@ type BybitHandlerInterface interface {
 	GetWalletBalance(w http.ResponseWriter, r *http.Request)
 	GetFeeRate(w http.ResponseWriter, r *http.Request)
 	GetInstruments(w http.ResponseWriter, r *http.Request)
+}
+
+// BybitWebSocketHandlerInterface определяет интерфейс для обработчика WebSocket сообщений
+type BybitWebSocketHandlerInterface interface {
+	HandleMessage(ctx context.Context, msg bybit.WebSocketMessage)
+	HandlePrivateMessage(ctx context.Context, msg bybit.WebSocketMessage, userID string)
 }

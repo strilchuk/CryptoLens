@@ -7,6 +7,7 @@ import (
 	"CryptoLens_Backend/repositories"
 	"CryptoLens_Backend/routes"
 	"CryptoLens_Backend/services"
+	"CryptoLens_Backend/trading"
 	"CryptoLens_Backend/types"
 	"context"
 	"database/sql"
@@ -29,9 +30,10 @@ type Container struct {
 	UserInstrumentHandler *handlers.UserInstrumentHandler
 	UserInstrumentRoutes  *routes.UserInstrumentRoutes
 	UserStrategyRepo      *repositories.UserStrategyRepository
-	UserStrategyService   *services.UserStrategyService
+	UserStrategyService   types.UserStrategyServiceInterface
 	UserStrategyHandler   *handlers.UserStrategyHandler
 	UserStrategyRoutes    *routes.UserStrategyRoutes
+	WebSocketHandler      types.BybitWebSocketHandlerInterface
 }
 
 func NewContainer(db *sql.DB, jwtKey []byte) *Container {
@@ -55,7 +57,13 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 	// Инициализация сервисов
 	userService := services.NewUserService(userRepo, jwtKey, db)
 	userInstrumentService := services.NewUserInstrumentService(userInstrumentRepo, bybitInstrumentRepo)
-	bybitService := services.NewBybitService(bybitClient, db, userService)
+
+	// Создаем WebSocketHandler
+	strategyManager := trading.NewStrategyManager(bybitClient)
+	webSocketHandler := handlers.NewBybitWebSocketHandler(strategyManager)
+
+	// Создаем BybitService с WebSocketHandler
+	bybitService := services.NewBybitService(bybitClient, db, userService, webSocketHandler)
 	userStrategyService := services.NewUserStrategyService(userStrategyRepo, bybitService.GetStrategyManager())
 
 	// Инициализация обработчиков
@@ -89,6 +97,7 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 		UserStrategyService:   userStrategyService,
 		UserStrategyHandler:   userStrategyHandler,
 		UserStrategyRoutes:    userStrategyRoutes,
+		WebSocketHandler:      webSocketHandler,
 	}
 }
 

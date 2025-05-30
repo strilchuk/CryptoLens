@@ -2,12 +2,12 @@ package services
 
 import (
 	"CryptoLens_Backend/env"
-	"CryptoLens_Backend/handlers"
 	"CryptoLens_Backend/integration/bybit"
 	"CryptoLens_Backend/logger"
 	"CryptoLens_Backend/models"
 	"CryptoLens_Backend/repositories"
 	"CryptoLens_Backend/trading"
+	"CryptoLens_Backend/types"
 	"context"
 	"database/sql"
 	"errors"
@@ -27,13 +27,13 @@ type BybitService struct {
 	userService         *UserService
 	bybitInstrumentRepo *repositories.BybitInstrumentRepository
 	userInstrumentRepo  *repositories.UserInstrumentRepository
-	wsHandler           *handlers.BybitWebSocketHandler
+	wsHandler           types.BybitWebSocketHandlerInterface
 	strategyManager     *trading.StrategyManager
-	userStrategyService *UserStrategyService
+	userStrategyService types.UserStrategyServiceInterface
 	wsMutex             sync.Mutex
 }
 
-func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserService) *BybitService {
+func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserService, wsHandler types.BybitWebSocketHandlerInterface) *BybitService {
 	recvWindow, _ := strconv.Atoi(env.GetBybitRecvWindow())
 	apiMode := env.GetBybitApiMode()
 	wsURL := env.GetBybitWsUrl() + "/v5/public/spot"
@@ -53,7 +53,7 @@ func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserServ
 		userService:         userService,
 		bybitInstrumentRepo: repositories.NewBybitInstrumentRepository(db),
 		userInstrumentRepo:  repositories.NewUserInstrumentRepository(db),
-		wsHandler:           handlers.NewBybitWebSocketHandler(strategyManager),
+		wsHandler:           wsHandler,
 		strategyManager:     strategyManager,
 		userStrategyService: userStrategyService,
 	}
@@ -466,4 +466,8 @@ func (s *BybitService) closePrivateWebSockets() {
 
 func (s *BybitService) GetStrategyManager() *trading.StrategyManager {
 	return s.strategyManager
+}
+
+func (s *BybitService) GetUserStrategyService() types.UserStrategyServiceInterface {
+	return s.userStrategyService
 }
