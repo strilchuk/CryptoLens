@@ -3,6 +3,9 @@ package bybit
 import (
 	"CryptoLens_Backend/logger"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
@@ -16,6 +19,8 @@ type WebSocketClient struct {
 	url        string
 	conn       *websocket.Conn
 	recvWindow int
+	apiKey     string // Для приватных каналов
+	apiSecret  string // Для приватных каналов
 	mutex      sync.Mutex
 }
 
@@ -61,11 +66,57 @@ type TradeMessage struct {
 	IsRPI      bool   `json:"RPI"`
 }
 
+// OrderMessage представляет сообщение об ордере
+type OrderMessage struct {
+	OrderID      string `json:"orderId"`
+	OrderLinkID  string `json:"orderLinkId"`
+	Symbol       string `json:"symbol"`
+	Side         string `json:"side"`
+	OrderType    string `json:"orderType"`
+	Price        string `json:"price"`
+	Qty          string `json:"qty"`
+	TimeInForce  string `json:"timeInForce"`
+	OrderStatus  string `json:"orderStatus"`
+	CreatedTime  string `json:"createdTime"`
+	UpdatedTime  string `json:"updatedTime"`
+	CumExecQty   string `json:"cumExecQty"`
+	CumExecValue string `json:"cumExecValue"`
+	CumExecFee   string `json:"cumExecFee"`
+	Category     string `json:"category"`
+}
+
+// ExecutionMessage представляет сообщение об исполнении ордера
+type ExecutionMessage struct {
+	ExecID      string `json:"execId"`
+	OrderID     string `json:"orderId"`
+	OrderLinkID string `json:"orderLinkId"`
+	Symbol      string `json:"symbol"`
+	Side        string `json:"side"`
+	ExecPrice   string `json:"execPrice"`
+	ExecQty     string `json:"execQty"`
+	ExecFee     string `json:"execFee"`
+	ExecTime    string `json:"execTime"`
+	Category    string `json:"category"`
+}
+
+// WalletMessage представляет сообщение о балансе кошелька
+type WalletMessage struct {
+	AccountType string `json:"accountType"`
+	Coin        []struct {
+		Coin          string `json:"coin"`
+		WalletBalance string `json:"walletBalance"`
+		Free          string `json:"free"`
+		Locked        string `json:"locked"`
+	} `json:"coin"`
+}
+
 // NewWebSocketClient создает новый WebSocket-клиент
-func NewWebSocketClient(url string, recvWindow int) *WebSocketClient {
+func NewWebSocketClient(url string, recvWindow int, apiKey, apiSecret string) *WebSocketClient {
 	return &WebSocketClient{
 		url:        url,
 		recvWindow: recvWindow,
+		apiKey:     apiKey,
+		apiSecret:  apiSecret,
 	}
 }
 
@@ -85,13 +136,70 @@ func (c *WebSocketClient) Connect(ctx context.Context) error {
 	}
 	c.conn = conn
 
-	// Логируем успешное подключение
 	logger.LogInfo("Успешно подключились к WebSocket: %s", c.url)
 
-	// Запускаем пинг каждые 20 секунд
-	go c.startPing(ctx)
+	// Аутентификация для приватных каналов
+	if c.apiKey != "" && c.apiSecret != "" {
+		if err := c.authenticate(ctx); err != nil {
+			c.conn.Close()
+			c.conn = nil
+			return fmt.Errorf("failed to authenticate: %w", err)
+		}
+	}
 
+	go c.startPing(ctx)
 	return nil
+}
+
+// authenticate отправляет запрос на аутентификацию для приватных каналов
+func (c *WebSocketClient) authenticate(ctx context.Context) error {
+	if c.conn == nil {
+		return fmt.Errorf("WebSocket not connected")
+	}
+
+	expires := time.Now().UnixMilli() + int64(c.recvWindow)
+	authMsg := map[string]interface{}{
+		"op": "auth",
+		"args": []interface{}{
+			c.apiKey,
+			expires,
+			c.generateSignature(expires),
+		},
+	}
+
+	logger.LogInfo("Sending auth message: %v", authMsg)
+	if err := c.conn.WriteJSON(authMsg); err != nil {
+		return fmt.Errorf("failed to send auth message: %w", err)
+	}
+
+	// Ожидаем подтверждения аутентификации
+	_, msg, err := c.conn.ReadMessage()
+	if err != nil {
+		return fmt.Errorf("failed to read auth response: %w", err)
+	}
+
+	var response struct {
+		Success bool   `json:"success"`
+		RetMsg  string `json:"ret_msg"`
+	}
+	if err := json.Unmarshal(msg, &response); err != nil {
+		return fmt.Errorf("failed to parse auth response: %w", err)
+	}
+
+	if !response.Success {
+		return fmt.Errorf("authentication failed: %s", response.RetMsg)
+	}
+
+	logger.LogInfo("Успешная аутентификация для WebSocket")
+	return nil
+}
+
+// generateSignature создает подпись для аутентификации
+func (c *WebSocketClient) generateSignature(expires int64) string {
+	val := fmt.Sprintf("GET/realtime%d", expires)
+	h := hmac.New(sha256.New, []byte(c.apiSecret))
+	h.Write([]byte(val))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // Subscribe подписывается на указанные каналы
@@ -136,6 +244,7 @@ func (c *WebSocketClient) StartMessageHandler(ctx context.Context, handler func(
 					continue
 				}
 
+				logger.LogInfo("Received WebSocket message: %s", string(msg))
 				var message WebSocketMessage
 				if err := json.Unmarshal(msg, &message); err != nil {
 					logger.LogError("Failed to parse WebSocket message: %v", err)

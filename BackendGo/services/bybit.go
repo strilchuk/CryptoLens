@@ -21,6 +21,7 @@ import (
 type BybitService struct {
 	bybitClient         bybit.Client
 	wsClient            *bybit.WebSocketClient
+	privateWsClients    map[string]*bybit.WebSocketClient // Карта приватных клиентов по userID
 	db                  *sql.DB
 	userService         *UserService
 	bybitInstrumentRepo *repositories.BybitInstrumentRepository
@@ -30,18 +31,18 @@ type BybitService struct {
 }
 
 func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserService) *BybitService {
-	// Инициализация WebSocket-клиента
 	recvWindow, _ := strconv.Atoi(env.GetBybitRecvWindow())
 	apiMode := env.GetBybitApiMode()
 	wsURL := env.GetBybitWsUrl() + "/v5/public/spot"
 	if apiMode == "test" {
 		wsURL = env.GetBybitWsTestUrl() + "/v5/public/spot"
 	}
-	wsClient := bybit.NewWebSocketClient(wsURL, recvWindow)
+	wsClient := bybit.NewWebSocketClient(wsURL, recvWindow, "", "")
 
 	return &BybitService{
 		bybitClient:         bybitClient,
 		wsClient:            wsClient,
+		privateWsClients:    make(map[string]*bybit.WebSocketClient),
 		db:                  db,
 		userService:         userService,
 		bybitInstrumentRepo: repositories.NewBybitInstrumentRepository(db),
@@ -314,4 +315,132 @@ func (s *BybitService) StartWebSocket(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// StartPrivateWebSocket запускает приватные WebSocket-соединения для активных аккаунтов
+func (s *BybitService) StartPrivateWebSocket(ctx context.Context) {
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				s.closePrivateWebSockets()
+				return
+			default:
+				// Получаем активные аккаунты Bybit
+				accounts, err := s.getActiveBybitAccounts(ctx)
+				if err != nil {
+					logger.LogError("Failed to get active Bybit accounts: %v", err)
+					time.Sleep(5 * time.Second)
+					continue
+				}
+
+				s.wsMutex.Lock()
+				// Закрываем соединения для неактивных аккаунтов
+				for userID := range s.privateWsClients {
+					if !s.isAccountActive(userID, accounts) {
+						if client, exists := s.privateWsClients[userID]; exists {
+							client.Close()
+							delete(s.privateWsClients, userID)
+							logger.LogInfo("Закрыто приватное WebSocket-соединение для userID: %s", userID)
+						}
+					}
+				}
+
+				// Создаем соединения для активных аккаунтов
+				apiMode := env.GetBybitApiMode()
+				privateWsURL := env.GetBybitWsUrl() + "/v5/private"
+				if apiMode == "test" {
+					privateWsURL = env.GetBybitWsTestUrl() + "/v5/private"
+				}
+				recvWindow, _ := strconv.Atoi(env.GetBybitRecvWindow())
+
+				for _, account := range accounts {
+					if _, exists := s.privateWsClients[account.UserID]; !exists {
+						wsClient := bybit.NewWebSocketClient(privateWsURL, recvWindow, account.APIKey, account.APISecret)
+						s.privateWsClients[account.UserID] = wsClient
+
+						// Подключаемся и подписываемся
+						if err := wsClient.Connect(ctx); err != nil {
+							logger.LogError("Failed to connect to private WebSocket for userID %s: %v", account.UserID, err)
+							delete(s.privateWsClients, account.UserID)
+							continue
+						}
+
+						privateChannels := []string{
+							"order.spot",
+							"execution.spot",
+							//"execution.fast.spot",
+							"wallet",
+						}
+						wsClient.StartMessageHandler(ctx, s.wsHandler.HandlePrivateMessage)
+
+						if err := wsClient.Subscribe(ctx, privateChannels); err != nil {
+							logger.LogError("Failed to subscribe to private channels for userID %s: %v", account.UserID, err)
+							wsClient.Close()
+							delete(s.privateWsClients, account.UserID)
+							continue
+						}
+
+						logger.LogInfo("Успешно подключились к приватному WebSocket для userID: %s", account.UserID)
+					}
+				}
+				s.wsMutex.Unlock()
+
+				time.Sleep(30 * time.Second) // Проверяем аккаунты каждые 30 секунд
+			}
+		}
+	}()
+}
+
+// getActiveBybitAccounts получает все активные аккаунты Bybit
+func (s *BybitService) getActiveBybitAccounts(ctx context.Context) ([]bybit.BybitAccount, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, user_id, api_key, api_secret, account_type, is_active 
+		FROM bybit_accounts 
+		WHERE is_active = true AND deleted_at IS NULL`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query active accounts: %w", err)
+	}
+	defer rows.Close()
+
+	var accounts []bybit.BybitAccount
+	for rows.Next() {
+		var account bybit.BybitAccount
+		if err := rows.Scan(
+			&account.ID,
+			&account.UserID,
+			&account.APIKey,
+			&account.APISecret,
+			&account.AccountType,
+			&account.IsActive,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan account: %w", err)
+		}
+		accounts = append(accounts, account)
+	}
+
+	return accounts, nil
+}
+
+// isAccountActive проверяет, активен ли аккаунт
+func (s *BybitService) isAccountActive(userID string, accounts []bybit.BybitAccount) bool {
+	for _, account := range accounts {
+		if account.UserID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+// closePrivateWebSockets закрывает все приватные WebSocket-соединения
+func (s *BybitService) closePrivateWebSockets() {
+	s.wsMutex.Lock()
+	defer s.wsMutex.Unlock()
+
+	for userID, client := range s.privateWsClients {
+		client.Close()
+		delete(s.privateWsClients, userID)
+		logger.LogInfo("Закрыто приватное WebSocket-соединение для userID: %s", userID)
+	}
 }

@@ -20,30 +20,27 @@ func NewBybitWebSocketHandler() *BybitWebSocketHandler {
 
 // HandleMessage обрабатывает входящие WebSocket сообщения
 func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.WebSocketMessage) {
-	// Логируем сырое сообщение
-	//logger.LogDebug("WebSocket сообщение: Topic=%s, Data=%s", msg.Topic, string(msg.Data))
+	logger.LogDebug("WebSocket сообщение: Topic=%s, Data=%s", msg.Topic, string(msg.Data))
 
 	if msg.Topic == "" {
-		logger.LogDebug("Сообщение без топика: %s", string(msg.Data))
-		// Проверяем подтверждение подписки
 		var subResponse struct {
 			Op      string   `json:"op"`
 			Success bool     `json:"success"`
 			Args    []string `json:"args"`
+			RetMsg  string   `json:"ret_msg"`
 		}
 		if err := json.Unmarshal(msg.Data, &subResponse); err == nil && subResponse.Op == "subscribe" {
 			if subResponse.Success {
 				logger.LogInfo("Подписка подтверждена для каналов: %v", subResponse.Args)
 			} else {
-				logger.LogError("Ошибка подписки: %s", string(msg.Data))
+				logger.LogError("Ошибка подписки: %s", subResponse.RetMsg)
 			}
 		}
 		return
 	}
 
-	// Определяем тип сообщения по топику
 	topicParts := strings.Split(msg.Topic, ".")
-	if len(topicParts) < 2 {
+	if len(topicParts) < 1 {
 		logger.LogError("Неверный формат топика: %s", msg.Topic)
 		return
 	}
@@ -69,14 +66,12 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 		h.handleOrderBookMessage(ctx, orderBookMsg)
 
 	case "publicTrade":
-		var tradeMsgs []bybit.TradeMessage
-		if err := json.Unmarshal(msg.Data, &tradeMsgs); err != nil {
+		var tradeMsg bybit.TradeMessage
+		if err := json.Unmarshal(msg.Data, &tradeMsg); err != nil {
 			logger.LogError("Ошибка разбора сообщения о сделке: %v", err)
 			return
 		}
-		for _, tradeMsg := range tradeMsgs {
-			h.handleTradeMessage(ctx, tradeMsg)
-		}
+		h.handleTradeMessage(ctx, tradeMsg)
 
 	default:
 		logger.LogInfo("Неизвестный тип сообщения: %s", messageType)
@@ -102,4 +97,50 @@ func (h *BybitWebSocketHandler) handleTradeMessage(ctx context.Context, msg bybi
 	logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
 		msg.Symbol, msg.Price, msg.Volume, msg.Side)
 	// Здесь можно добавить дополнительную логику обработки сделок
+}
+
+func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg bybit.WebSocketMessage) {
+	logger.LogDebug("Приватное WebSocket сообщение: Topic=%s, Data=%s", msg.Topic, string(msg.Data))
+
+	switch msg.Topic {
+	case "order.spot":
+		var orders []bybit.OrderMessage
+		if err := json.Unmarshal(msg.Data, &orders); err != nil {
+			logger.LogError("Ошибка разбора сообщения ордера: %v", err)
+			return
+		}
+		for _, order := range orders {
+			logger.LogInfo("Ордер: UserID=unknown, Symbol=%s, OrderID=%s, Status=%s",
+				order.Symbol, order.OrderID, order.OrderStatus)
+			// TODO: Сохранить или передать в торговую логику
+		}
+
+	case "execution.spot":
+		//case "execution.fast.spot":
+		var executions []bybit.ExecutionMessage
+		if err := json.Unmarshal(msg.Data, &executions); err != nil {
+			logger.LogError("Ошибка разбора сообщения исполнения: %v", err)
+			return
+		}
+		for _, exec := range executions {
+			logger.LogInfo("Исполнение: UserID=unknown, Symbol=%s, ExecID=%s, Price=%s, Qty=%s",
+				exec.Symbol, exec.ExecID, exec.ExecPrice, exec.ExecQty)
+			// TODO: Сохранить или передать в торговую логику
+		}
+
+	case "wallet":
+		var wallet bybit.WalletMessage
+		if err := json.Unmarshal(msg.Data, &wallet); err != nil {
+			logger.LogError("Ошибка разбора сообщения кошелька: %v", err)
+			return
+		}
+		for _, coin := range wallet.Coin {
+			logger.LogInfo("Баланс: UserID=unknown, Coin=%s, WalletBalance=%s, Free=%s",
+				coin.Coin, coin.WalletBalance, coin.Free)
+			// TODO: Сохранить или передать в торговую логику
+		}
+
+	default:
+		logger.LogInfo("Неизвестный приватный топик: %s", msg.Topic)
+	}
 }

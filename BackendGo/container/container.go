@@ -14,17 +14,17 @@ import (
 )
 
 type Container struct {
-	DB                   *sql.DB
-	UserRepo             *repositories.UserRepository
-	UserService          types.UserServiceInterface
-	UserHandler          *handlers.UserHandler
-	UserRoutes           *routes.UserRoutes
-	BybitClient          bybit.Client
-	BybitService         types.BybitServiceInterface
-	BybitHandler         types.BybitHandlerInterface
-	BybitRoutes          *routes.BybitRoutes
-	UserInstrumentRepo   *repositories.UserInstrumentRepository
-	BybitInstrumentRepo  *repositories.BybitInstrumentRepository
+	DB                    *sql.DB
+	UserRepo              *repositories.UserRepository
+	UserService           types.UserServiceInterface
+	UserHandler           *handlers.UserHandler
+	UserRoutes            *routes.UserRoutes
+	BybitClient           bybit.Client
+	BybitService          types.BybitServiceInterface
+	BybitHandler          types.BybitHandlerInterface
+	BybitRoutes           *routes.BybitRoutes
+	UserInstrumentRepo    *repositories.UserInstrumentRepository
+	BybitInstrumentRepo   *repositories.BybitInstrumentRepository
 	UserInstrumentService types.UserInstrumentServiceInterface
 	UserInstrumentHandler *handlers.UserInstrumentHandler
 	UserInstrumentRoutes  *routes.UserInstrumentRoutes
@@ -63,17 +63,17 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 	bybitRoutes := routes.NewBybitRoutes(bybitHandler)
 
 	return &Container{
-		DB:                   db,
-		UserRepo:             userRepo,
-		UserService:          userService,
-		UserHandler:          userHandler,
-		UserRoutes:           userRoutes,
-		BybitClient:          bybitClient,
-		BybitService:         bybitService,
-		BybitHandler:         bybitHandler,
-		BybitRoutes:          bybitRoutes,
-		UserInstrumentRepo:   userInstrumentRepo,
-		BybitInstrumentRepo:  bybitInstrumentRepo,
+		DB:                    db,
+		UserRepo:              userRepo,
+		UserService:           userService,
+		UserHandler:           userHandler,
+		UserRoutes:            userRoutes,
+		BybitClient:           bybitClient,
+		BybitService:          bybitService,
+		BybitHandler:          bybitHandler,
+		BybitRoutes:           bybitRoutes,
+		UserInstrumentRepo:    userInstrumentRepo,
+		BybitInstrumentRepo:   bybitInstrumentRepo,
 		UserInstrumentService: userInstrumentService,
 		UserInstrumentHandler: userInstrumentHandler,
 		UserInstrumentRoutes:  userInstrumentRoutes,
@@ -91,4 +91,6 @@ func (c *Container) StartBackgroundTasks(ctx context.Context) {
 	go c.BybitService.StartInstrumentsUpdate(ctx)
 	// Запускаем WebSocket
 	go c.BybitService.StartWebSocket(ctx)
-} 
+	// Запускаем Приватный WebSocket
+	go c.BybitService.StartPrivateWebSocket(ctx)
+}
