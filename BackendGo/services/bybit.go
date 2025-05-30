@@ -7,6 +7,7 @@ import (
 	"CryptoLens_Backend/logger"
 	"CryptoLens_Backend/models"
 	"CryptoLens_Backend/repositories"
+	"CryptoLens_Backend/trading"
 	"context"
 	"database/sql"
 	"errors"
@@ -27,6 +28,7 @@ type BybitService struct {
 	bybitInstrumentRepo *repositories.BybitInstrumentRepository
 	userInstrumentRepo  *repositories.UserInstrumentRepository
 	wsHandler           *handlers.BybitWebSocketHandler
+	strategyManager     *trading.StrategyManager
 	wsMutex             sync.Mutex
 }
 
@@ -38,6 +40,7 @@ func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserServ
 		wsURL = env.GetBybitWsTestUrl() + "/v5/public/spot"
 	}
 	wsClient := bybit.NewWebSocketClient(wsURL, recvWindow, "", "")
+	strategyManager := trading.NewStrategyManager(bybitClient)
 
 	return &BybitService{
 		bybitClient:         bybitClient,
@@ -47,7 +50,8 @@ func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserServ
 		userService:         userService,
 		bybitInstrumentRepo: repositories.NewBybitInstrumentRepository(db),
 		userInstrumentRepo:  repositories.NewUserInstrumentRepository(db),
-		wsHandler:           handlers.NewBybitWebSocketHandler(),
+		wsHandler:           handlers.NewBybitWebSocketHandler(strategyManager),
+		strategyManager:     strategyManager,
 	}
 }
 
@@ -254,9 +258,19 @@ func (s *BybitService) UpdateInstruments(ctx context.Context) error {
 	return nil
 }
 
+// AddTestStrategy добавляет тестовую стратегию для пользователя
+func (s *BybitService) AddTestStrategy(userID string) {
+	strategy := trading.NewTestStrategy(userID)
+	s.strategyManager.AddStrategy(userID, strategy)
+	go strategy.Start(context.Background())
+}
+
 // StartWebSocket запускает WebSocket-соединение и подписку на каналы
 func (s *BybitService) StartWebSocket(ctx context.Context) {
 	go func() {
+		// Добавляем тестовую стратегию
+		s.AddTestStrategy("bf1a50e7-e321-4567-9eee-e6f3b4743917")
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -372,7 +386,11 @@ func (s *BybitService) StartPrivateWebSocket(ctx context.Context) {
 							//"execution.fast.spot",
 							"wallet",
 						}
-						wsClient.StartMessageHandler(ctx, s.wsHandler.HandlePrivateMessage)
+						// Передаем userID в обработчик
+						userID := account.UserID
+						wsClient.StartMessageHandler(ctx, func(ctx context.Context, msg bybit.WebSocketMessage) {
+							s.wsHandler.HandlePrivateMessage(ctx, msg, userID)
+						})
 
 						if err := wsClient.Subscribe(ctx, privateChannels); err != nil {
 							logger.LogError("Failed to subscribe to private channels for userID %s: %v", account.UserID, err)

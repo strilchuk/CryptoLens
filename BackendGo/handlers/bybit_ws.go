@@ -3,6 +3,7 @@ package handlers
 import (
 	"CryptoLens_Backend/integration/bybit"
 	"CryptoLens_Backend/logger"
+	"CryptoLens_Backend/trading"
 	"context"
 	"encoding/json"
 	"strings"
@@ -10,12 +11,14 @@ import (
 
 // BybitWebSocketHandler обрабатывает WebSocket сообщения от Bybit
 type BybitWebSocketHandler struct {
-	// Здесь можно добавить зависимости, если они понадобятся
+	strategyManager *trading.StrategyManager
 }
 
 // NewBybitWebSocketHandler создает новый обработчик WebSocket сообщений
-func NewBybitWebSocketHandler() *BybitWebSocketHandler {
-	return &BybitWebSocketHandler{}
+func NewBybitWebSocketHandler(strategyManager *trading.StrategyManager) *BybitWebSocketHandler {
+	return &BybitWebSocketHandler{
+		strategyManager: strategyManager,
+	}
 }
 
 // HandleMessage обрабатывает входящие WebSocket сообщения
@@ -40,7 +43,7 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 	}
 
 	topicParts := strings.Split(msg.Topic, ".")
-	if len(topicParts) < 1 {
+	if len(topicParts) < 2 {
 		logger.LogError("Неверный формат топика: %s", msg.Topic)
 		return
 	}
@@ -56,6 +59,7 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 			return
 		}
 		h.handleTickerMessage(ctx, tickerMsg)
+		h.strategyManager.HandleTicker(ctx, tickerMsg)
 
 	case "orderbook":
 		var orderBookMsg bybit.OrderBookMessage
@@ -64,6 +68,7 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 			return
 		}
 		h.handleOrderBookMessage(ctx, orderBookMsg)
+		h.strategyManager.HandleOrderBook(ctx, orderBookMsg)
 
 	case "publicTrade":
 		var tradeMsg bybit.TradeMessage
@@ -72,35 +77,15 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 			return
 		}
 		h.handleTradeMessage(ctx, tradeMsg)
+		h.strategyManager.HandleTrade(ctx, tradeMsg)
 
 	default:
 		logger.LogInfo("Неизвестный тип сообщения: %s", messageType)
 	}
 }
 
-// handleTickerMessage обрабатывает сообщения тикера
-func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg bybit.TickerMessage) {
-	logger.LogInfo("Тикер %s: цена=%s, объем=%s",
-		msg.Symbol, msg.LastPrice, msg.Volume24h)
-	// Здесь можно добавить дополнительную логику обработки тикера
-}
-
-// handleOrderBookMessage обрабатывает сообщения книги ордеров
-func (h *BybitWebSocketHandler) handleOrderBookMessage(ctx context.Context, msg bybit.OrderBookMessage) {
-	logger.LogInfo("Книга ордеров %s: %d бидов, %d асков",
-		msg.Symbol, len(msg.Bids), len(msg.Asks))
-	// Здесь можно добавить дополнительную логику обработки книги ордеров
-}
-
-// handleTradeMessage обрабатывает сообщения о сделках
-func (h *BybitWebSocketHandler) handleTradeMessage(ctx context.Context, msg bybit.TradeMessage) {
-	logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
-		msg.Symbol, msg.Price, msg.Volume, msg.Side)
-	// Здесь можно добавить дополнительную логику обработки сделок
-}
-
-func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg bybit.WebSocketMessage) {
-	logger.LogDebug("Приватное WebSocket сообщение: Topic=%s, Data=%s", msg.Topic, string(msg.Data))
+func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg bybit.WebSocketMessage, userID string) {
+	logger.LogDebug("Приватное WebSocket сообщение: Topic=%s, Data=%s, UserID=%s", msg.Topic, string(msg.Data), userID)
 
 	switch msg.Topic {
 	case "order.spot":
@@ -110,9 +95,9 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 			return
 		}
 		for _, order := range orders {
-			logger.LogInfo("Ордер: UserID=unknown, Symbol=%s, OrderID=%s, Status=%s",
-				order.Symbol, order.OrderID, order.OrderStatus)
-			// TODO: Сохранить или передать в торговую логику
+			logger.LogInfo("Ордер: UserID=%s, Symbol=%s, OrderID=%s, Status=%s",
+				userID, order.Symbol, order.OrderID, order.OrderStatus)
+			h.strategyManager.HandleOrder(ctx, order)
 		}
 
 	case "execution.spot":
@@ -123,9 +108,9 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 			return
 		}
 		for _, exec := range executions {
-			logger.LogInfo("Исполнение: UserID=unknown, Symbol=%s, ExecID=%s, Price=%s, Qty=%s",
-				exec.Symbol, exec.ExecID, exec.ExecPrice, exec.ExecQty)
-			// TODO: Сохранить или передать в торговую логику
+			logger.LogInfo("Исполнение: UserID=%s, Symbol=%s, ExecID=%s, Price=%s, Qty=%s",
+				userID, exec.Symbol, exec.ExecID, exec.ExecPrice, exec.ExecQty)
+			h.strategyManager.HandleExecution(ctx, exec)
 		}
 
 	case "wallet":
@@ -135,12 +120,27 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 			return
 		}
 		for _, coin := range wallet.Coin {
-			logger.LogInfo("Баланс: UserID=unknown, Coin=%s, WalletBalance=%s, Free=%s",
-				coin.Coin, coin.WalletBalance, coin.Free)
-			// TODO: Сохранить или передать в торговую логику
+			logger.LogInfo("Баланс: UserID=%s, Coin=%s, WalletBalance=%s, Free=%s",
+				userID, coin.Coin, coin.WalletBalance, coin.Free)
 		}
+		h.strategyManager.HandleWallet(ctx, wallet)
 
 	default:
 		logger.LogInfo("Неизвестный приватный топик: %s", msg.Topic)
 	}
+}
+
+func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg bybit.TickerMessage) {
+	logger.LogInfo("Тикер %s: цена=%s, объем=%s",
+		msg.Symbol, msg.LastPrice, msg.Volume24h)
+}
+
+func (h *BybitWebSocketHandler) handleOrderBookMessage(ctx context.Context, msg bybit.OrderBookMessage) {
+	logger.LogInfo("Книга ордеров %s: %d бидов, %d асков",
+		msg.Symbol, len(msg.Bids), len(msg.Asks))
+}
+
+func (h *BybitWebSocketHandler) handleTradeMessage(ctx context.Context, msg bybit.TradeMessage) {
+	logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
+		msg.Symbol, msg.Price, msg.Volume, msg.Side)
 }
