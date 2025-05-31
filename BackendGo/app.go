@@ -40,5 +40,12 @@ func main() {
 	// Ждем сигнала для завершения
 	<-sigChan
 	log.Println("Shutting down gracefully...")
-	cancel() // Отменяем контекст, что приведет к остановке фоновых задач
+	
+	// Отменяем контекст, что приведет к остановке фоновых задач
+	cancel()
+	
+	// Закрываем соединения
+	if err := ctr.Close(); err != nil {
+		log.Printf("Error during shutdown: %v", err)
+	}
 }

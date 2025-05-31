@@ -8,10 +8,12 @@ import (
 	"CryptoLens_Backend/repositories"
 	"CryptoLens_Backend/routes"
 	"CryptoLens_Backend/services"
+	"CryptoLens_Backend/storages"
 	"CryptoLens_Backend/trading"
 	"CryptoLens_Backend/types"
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 )
 
@@ -121,4 +123,12 @@ func (c *Container) StartBackgroundTasks(ctx context.Context) {
 	go c.BybitService.StartWebSocket(ctx)
 	// Запускаем Приватный WebSocket
 	go c.BybitService.StartPrivateWebSocket(ctx)
+}
+
+func (c *Container) Close() error {
+	// Закрываем соединение с Redis
+	if err := storages.Close(); err != nil {
+		return fmt.Errorf("failed to close Redis connection: %w", err)
+	}
+	return nil
 }

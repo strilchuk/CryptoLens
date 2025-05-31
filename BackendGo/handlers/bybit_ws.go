@@ -3,6 +3,7 @@ package handlers
 import (
 	"CryptoLens_Backend/integration/bybit"
 	"CryptoLens_Backend/logger"
+	"CryptoLens_Backend/storages"
 	"CryptoLens_Backend/trading"
 	"context"
 	"encoding/json"
@@ -49,7 +50,7 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 	}
 
 	messageType := topicParts[0]
-	//symbol := topicParts[1]
+	symbol := topicParts[1]
 
 	switch messageType {
 	case "tickers":
@@ -58,8 +59,10 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 			logger.LogError("Ошибка разбора сообщения тикера: %v", err)
 			return
 		}
+		if err := storages.SaveTicker(ctx, symbol, tickerMsg); err != nil {
+			logger.LogError("Ошибка сохранения тикера: %v", err)
+		}
 		h.handleTickerMessage(ctx, tickerMsg)
-		h.strategyManager.HandleTicker(ctx, tickerMsg)
 
 	case "orderbook":
 		var orderBookMsg bybit.OrderBookMessage
@@ -67,8 +70,10 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 			logger.LogError("Ошибка разбора сообщения книги ордеров: %v", err)
 			return
 		}
+		if err := storages.SaveOrderBook(ctx, symbol, orderBookMsg); err != nil {
+			logger.LogError("Ошибка сохранения книги ордеров: %v", err)
+		}
 		h.handleOrderBookMessage(ctx, orderBookMsg)
-		h.strategyManager.HandleOrderBook(ctx, orderBookMsg)
 
 	case "publicTrade":
 		var tradeMsg bybit.TradeMessage
@@ -76,16 +81,40 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 			logger.LogError("Ошибка разбора сообщения о сделке: %v", err)
 			return
 		}
+		if err := storages.SavePublicTrade(ctx, symbol, tradeMsg); err != nil {
+			logger.LogError("Ошибка сохранения сделки: %v", err)
+		}
 		h.handleTradeMessage(ctx, tradeMsg)
-		h.strategyManager.HandleTrade(ctx, tradeMsg)
 
 	default:
 		logger.LogInfo("Неизвестный тип сообщения: %s", messageType)
 	}
 }
 
+// handleTickerMessage обрабатывает сообщения тикера
+func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg bybit.TickerMessage) {
+	logger.LogInfo("Тикер %s: цена=%s, объем=%s",
+		msg.Symbol, msg.LastPrice, msg.Volume24h)
+	// Здесь можно добавить дополнительную логику обработки тикера
+}
+
+// handleOrderBookMessage обрабатывает сообщения книги ордеров
+func (h *BybitWebSocketHandler) handleOrderBookMessage(ctx context.Context, msg bybit.OrderBookMessage) {
+	logger.LogInfo("Книга ордеров %s: %d бидов, %d асков",
+		msg.Symbol, len(msg.Bids), len(msg.Asks))
+	// Здесь можно добавить дополнительную логику обработки книги ордеров
+}
+
+// handleTradeMessage обрабатывает сообщения о сделках
+func (h *BybitWebSocketHandler) handleTradeMessage(ctx context.Context, msg bybit.TradeMessage) {
+	logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
+		msg.Symbol, msg.Price, msg.Volume, msg.Side)
+	// Здесь можно добавить дополнительную логику обработки сделок
+}
+
+// HandlePrivateMessage обрабатывает приватные WebSocket сообщения
 func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg bybit.WebSocketMessage, userID string) {
-	logger.LogDebug("Приватное WebSocket сообщение: Topic=%s, Data=%s, UserID=%s", msg.Topic, string(msg.Data), userID)
+	logger.LogDebug("Приватное WebSocket сообщение: Topic=%s, Data=%s", msg.Topic, string(msg.Data))
 
 	switch msg.Topic {
 	case "order.spot":
@@ -95,9 +124,11 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 			return
 		}
 		for _, order := range orders {
+			if err := storages.SavePrivateOrder(ctx, userID, order.OrderID, order); err != nil {
+				logger.LogError("Ошибка сохранения ордера: %v", err)
+			}
 			logger.LogInfo("Ордер: UserID=%s, Symbol=%s, OrderID=%s, Status=%s",
 				userID, order.Symbol, order.OrderID, order.OrderStatus)
-			h.strategyManager.HandleOrder(ctx, order)
 		}
 
 	case "execution.spot":
@@ -108,9 +139,11 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 			return
 		}
 		for _, exec := range executions {
+			if err := storages.SavePrivateExecution(ctx, userID, exec.ExecID, exec); err != nil {
+				logger.LogError("Ошибка сохранения исполнения: %v", err)
+			}
 			logger.LogInfo("Исполнение: UserID=%s, Symbol=%s, ExecID=%s, Price=%s, Qty=%s",
 				userID, exec.Symbol, exec.ExecID, exec.ExecPrice, exec.ExecQty)
-			h.strategyManager.HandleExecution(ctx, exec)
 		}
 
 	case "wallet":
@@ -119,28 +152,15 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 			logger.LogError("Ошибка разбора сообщения кошелька: %v", err)
 			return
 		}
+		if err := storages.SavePrivateWallet(ctx, userID, wallet); err != nil {
+			logger.LogError("Ошибка сохранения кошелька: %v", err)
+		}
 		for _, coin := range wallet.Coin {
 			logger.LogInfo("Баланс: UserID=%s, Coin=%s, WalletBalance=%s, Free=%s",
 				userID, coin.Coin, coin.WalletBalance, coin.Free)
 		}
-		h.strategyManager.HandleWallet(ctx, wallet)
 
 	default:
 		logger.LogInfo("Неизвестный приватный топик: %s", msg.Topic)
 	}
-}
-
-func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg bybit.TickerMessage) {
-	logger.LogInfo("Тикер %s: цена=%s, объем=%s",
-		msg.Symbol, msg.LastPrice, msg.Volume24h)
-}
-
-func (h *BybitWebSocketHandler) handleOrderBookMessage(ctx context.Context, msg bybit.OrderBookMessage) {
-	logger.LogInfo("Книга ордеров %s: %d бидов, %d асков",
-		msg.Symbol, len(msg.Bids), len(msg.Asks))
-}
-
-func (h *BybitWebSocketHandler) handleTradeMessage(ctx context.Context, msg bybit.TradeMessage) {
-	logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
-		msg.Symbol, msg.Price, msg.Volume, msg.Side)
 }

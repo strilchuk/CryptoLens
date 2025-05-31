@@ -1,0 +1,186 @@
+package storages
+
+import (
+	"CryptoLens_Backend/integration/bybit"
+	"CryptoLens_Backend/integration/redis"
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+)
+
+// Публичные методы для работы с Redis
+
+// SaveTicker сохраняет данные тикера
+func SaveTicker(ctx context.Context, symbol string, ticker bybit.TickerMessage) error {
+	key := fmt.Sprintf("tickers:%s", symbol)
+	data, err := json.Marshal(ticker)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ticker: %w", err)
+	}
+
+	return redis.Client.Set(ctx, key, data, 1*time.Hour).Err()
+}
+
+// SaveOrderBook сохраняет данные книги ордеров
+func SaveOrderBook(ctx context.Context, symbol string, orderBook bybit.OrderBookMessage) error {
+	key := fmt.Sprintf("orderbook:%s", symbol)
+	data, err := json.Marshal(orderBook)
+	if err != nil {
+		return fmt.Errorf("failed to marshal orderbook: %w", err)
+	}
+
+	return redis.Client.Set(ctx, key, data, 1*time.Hour).Err()
+}
+
+// SavePublicTrade сохраняет данные публичной сделки
+func SavePublicTrade(ctx context.Context, symbol string, trade bybit.TradeMessage) error {
+	key := fmt.Sprintf("publicTrade:%s", symbol)
+	data, err := json.Marshal(trade)
+	if err != nil {
+		return fmt.Errorf("failed to marshal trade: %w", err)
+	}
+
+	// Добавляем сделку в список
+	return redis.Client.RPush(ctx, key, data).Err()
+}
+
+// GetTicker получает данные тикера
+func GetTicker(ctx context.Context, symbol string) (*bybit.TickerMessage, error) {
+	key := fmt.Sprintf("tickers:%s", symbol)
+	data, err := redis.Client.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ticker: %w", err)
+	}
+
+	var ticker bybit.TickerMessage
+	if err := json.Unmarshal(data, &ticker); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ticker: %w", err)
+	}
+
+	return &ticker, nil
+}
+
+// GetOrderBook получает данные книги ордеров
+func GetOrderBook(ctx context.Context, symbol string) (*bybit.OrderBookMessage, error) {
+	key := fmt.Sprintf("orderbook:%s", symbol)
+	data, err := redis.Client.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get orderbook: %w", err)
+	}
+
+	var orderBook bybit.OrderBookMessage
+	if err := json.Unmarshal(data, &orderBook); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal orderbook: %w", err)
+	}
+
+	return &orderBook, nil
+}
+
+// GetPublicTrades получает последние N публичных сделок
+func GetPublicTrades(ctx context.Context, symbol string, limit int64) ([]bybit.TradeMessage, error) {
+	key := fmt.Sprintf("publicTrade:%s", symbol)
+	data, err := redis.Client.LRange(ctx, key, -limit, -1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get trades: %w", err)
+	}
+
+	var trades []bybit.TradeMessage
+	for _, item := range data {
+		var trade bybit.TradeMessage
+		if err := json.Unmarshal([]byte(item), &trade); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal trade: %w", err)
+		}
+		trades = append(trades, trade)
+	}
+
+	return trades, nil
+}
+
+// Приватные методы для работы с Redis
+
+// SavePrivateOrder сохраняет данные приватного ордера
+func SavePrivateOrder(ctx context.Context, userID string, orderID string, order bybit.OrderMessage) error {
+	key := fmt.Sprintf("private:%s:order:%s", userID, orderID)
+	data, err := json.Marshal(order)
+	if err != nil {
+		return fmt.Errorf("failed to marshal order: %w", err)
+	}
+
+	return redis.Client.Set(ctx, key, data, 24*time.Hour).Err()
+}
+
+// SavePrivateExecution сохраняет данные приватного исполнения
+func SavePrivateExecution(ctx context.Context, userID string, execID string, execution bybit.ExecutionMessage) error {
+	key := fmt.Sprintf("private:%s:execution:%s", userID, execID)
+	data, err := json.Marshal(execution)
+	if err != nil {
+		return fmt.Errorf("failed to marshal execution: %w", err)
+	}
+
+	return redis.Client.Set(ctx, key, data, 24*time.Hour).Err()
+}
+
+// SavePrivateWallet сохраняет данные приватного кошелька
+func SavePrivateWallet(ctx context.Context, userID string, wallet bybit.WalletMessage) error {
+	key := fmt.Sprintf("private:%s:wallet", userID)
+	data, err := json.Marshal(wallet)
+	if err != nil {
+		return fmt.Errorf("failed to marshal wallet: %w", err)
+	}
+
+	return redis.Client.Set(ctx, key, data, 1*time.Hour).Err()
+}
+
+// GetPrivateOrder получает данные приватного ордера
+func GetPrivateOrder(ctx context.Context, userID string, orderID string) (*bybit.OrderMessage, error) {
+	key := fmt.Sprintf("private:%s:order:%s", userID, orderID)
+	data, err := redis.Client.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get order: %w", err)
+	}
+
+	var order bybit.OrderMessage
+	if err := json.Unmarshal(data, &order); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal order: %w", err)
+	}
+
+	return &order, nil
+}
+
+// GetPrivateExecution получает данные приватного исполнения
+func GetPrivateExecution(ctx context.Context, userID string, execID string) (*bybit.ExecutionMessage, error) {
+	key := fmt.Sprintf("private:%s:execution:%s", userID, execID)
+	data, err := redis.Client.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get execution: %w", err)
+	}
+
+	var execution bybit.ExecutionMessage
+	if err := json.Unmarshal(data, &execution); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal execution: %w", err)
+	}
+
+	return &execution, nil
+}
+
+// GetPrivateWallet получает данные приватного кошелька
+func GetPrivateWallet(ctx context.Context, userID string) (*bybit.WalletMessage, error) {
+	key := fmt.Sprintf("private:%s:wallet", userID)
+	data, err := redis.Client.Get(ctx, key).Bytes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get wallet: %w", err)
+	}
+
+	var wallet bybit.WalletMessage
+	if err := json.Unmarshal(data, &wallet); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal wallet: %w", err)
+	}
+
+	return &wallet, nil
+}
+
+// Close закрывает соединение с Redis
+func Close() error {
+	return redis.Client.Close()
+}

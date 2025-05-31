@@ -2,12 +2,13 @@ package initialization
 
 import (
 	"CryptoLens_Backend/db"
+	"CryptoLens_Backend/integration/redis"
 	"CryptoLens_Backend/logger"
 	"database/sql"
-	"log"
-
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
+	"log"
+
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
@@ -20,6 +21,7 @@ func Initialize() {
 	initLogger()
 	initDB()
 	applyMigrations()
+	initRedis()
 }
 
 // initDB инициализирует подключение к базе данных
@@ -58,4 +60,10 @@ func applyMigrations() {
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		log.Fatal(err)
 	}
-} 
+}
+
+func initRedis() {
+	if err := redis.Init(); err != nil {
+		log.Fatal(err)
+	}
+}
