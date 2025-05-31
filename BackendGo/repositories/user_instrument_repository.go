@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 )
 
 type UserInstrumentRepository struct {
@@ -176,4 +177,55 @@ func (r *UserInstrumentRepository) GetActiveInstruments(ctx context.Context) ([]
 	}
 
 	return symbols, nil
-} 
+}
+
+func (r *UserInstrumentRepository) GetActiveInstrumentsByUserID(ctx context.Context, userID string) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT symbol 
+		FROM user_instruments 
+		WHERE user_id = $1 AND is_active = true AND deleted_at IS NULL`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query active instruments: %w", err)
+	}
+	defer rows.Close()
+
+	var symbols []string
+	for rows.Next() {
+		var symbol string
+		if err := rows.Scan(&symbol); err != nil {
+			return nil, fmt.Errorf("failed to scan symbol: %w", err)
+		}
+		symbols = append(symbols, symbol)
+	}
+
+	return symbols, nil
+}
+
+// GetByID получает инструмент пользователя по ID
+func (r *UserInstrumentRepository) GetByID(ctx context.Context, id string) (*models.UserInstrument, error) {
+	query := `
+		SELECT id, user_id, symbol, is_active, created_at, updated_at
+		FROM user_instruments
+		WHERE id = $1 AND deleted_at IS NULL`
+
+	instrument := &models.UserInstrument{}
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&instrument.ID,
+		&instrument.UserID,
+		&instrument.Symbol,
+		&instrument.IsActive,
+		&instrument.CreatedAt,
+		&instrument.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("user instrument not found")
+		}
+		logger.LogError("Failed to get user instrument: %v", err)
+		return nil, err
+	}
+
+	return instrument, nil
+}

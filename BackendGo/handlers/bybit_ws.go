@@ -4,7 +4,7 @@ import (
 	"CryptoLens_Backend/integration/bybit"
 	"CryptoLens_Backend/logger"
 	"CryptoLens_Backend/storages"
-	"CryptoLens_Backend/trading"
+	"CryptoLens_Backend/types"
 	"context"
 	"encoding/json"
 	"github.com/shopspring/decimal"
@@ -13,11 +13,11 @@ import (
 
 // BybitWebSocketHandler обрабатывает WebSocket сообщения от Bybit
 type BybitWebSocketHandler struct {
-	strategyManager *trading.StrategyManager
+	strategyManager types.StrategyManagerInterface
 }
 
 // NewBybitWebSocketHandler создает новый обработчик WebSocket сообщений
-func NewBybitWebSocketHandler(strategyManager *trading.StrategyManager) *BybitWebSocketHandler {
+func NewBybitWebSocketHandler(strategyManager types.StrategyManagerInterface) *BybitWebSocketHandler {
 	return &BybitWebSocketHandler{
 		strategyManager: strategyManager,
 	}

@@ -2,58 +2,44 @@ package trading
 
 import (
 	"CryptoLens_Backend/integration/bybit"
+	"CryptoLens_Backend/storages"
+	"CryptoLens_Backend/types"
 	"context"
 	"fmt"
+	"github.com/shopspring/decimal"
 	"sync"
 )
 
-// Strategy определяет интерфейс для торговых стратегий
-type Strategy interface {
-	// OnTicker вызывается при получении тикера
-	OnTicker(ctx context.Context, ticker bybit.TickerMessage)
-	// OnOrderBook вызывается при обновлении книги ордеров
-	OnOrderBook(ctx context.Context, orderBook bybit.OrderBookMessage)
-	// OnTrade вызывается при новой сделке
-	OnTrade(ctx context.Context, trade bybit.TradeMessage)
-	// OnOrder вызывается при обновлении ордера
-	OnOrder(ctx context.Context, order bybit.OrderMessage)
-	// OnExecution вызывается при исполнении ордера
-	OnExecution(ctx context.Context, execution bybit.ExecutionMessage)
-	// OnWallet вызывается при обновлении баланса
-	OnWallet(ctx context.Context, wallet bybit.WalletMessage)
-	// Start запускает стратегию
-	Start(ctx context.Context)
-	// Stop останавливает стратегию
-	Stop(ctx context.Context)
-}
-
 // StrategyManager управляет стратегиями
 type StrategyManager struct {
-	strategies  map[string][]Strategy // userID -> список стратегий
-	bybitClient bybit.Client
-	mutex       sync.Mutex
+	strategies         map[string][]types.Strategy // userID -> список стратегий
+	userInstruments    map[string][]string   // userID -> список символов из user_instruments
+	bybitClient        bybit.Client
+	userInstrumentRepo types.UserInstrumentRepositoryInterface
+	mutex              sync.Mutex
 }
 
 // NewStrategyManager создает новый менеджер стратегий
-func NewStrategyManager(client bybit.Client) *StrategyManager {
+func NewStrategyManager(client bybit.Client, userInstrumentRepo types.UserInstrumentRepositoryInterface) *StrategyManager {
 	return &StrategyManager{
-		strategies:  make(map[string][]Strategy),
-		bybitClient: client,
+		strategies:         make(map[string][]types.Strategy),
+		userInstruments:    make(map[string][]string),
+		bybitClient:        client,
+		userInstrumentRepo: userInstrumentRepo,
 	}
 }
 
 // AddStrategy добавляет стратегию для пользователя
-func (m *StrategyManager) AddStrategy(userID string, strategy Strategy) {
+func (m *StrategyManager) AddStrategy(userID string, strategy types.Strategy) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.strategies[userID] = append(m.strategies[userID], strategy)
 }
 
 // RemoveStrategy удаляет стратегию для пользователя
-func (m *StrategyManager) RemoveStrategy(userID string, strategy Strategy) {
+func (m *StrategyManager) RemoveStrategy(userID string, strategy types.Strategy) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
 	strategies := m.strategies[userID]
 	for i, s := range strategies {
 		if s == strategy {
@@ -63,14 +49,40 @@ func (m *StrategyManager) RemoveStrategy(userID string, strategy Strategy) {
 	}
 }
 
+// UpdateUserInstruments обновляет список активных символов пользователя
+func (m *StrategyManager) UpdateUserInstruments(ctx context.Context, userID string) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	symbols, err := m.userInstrumentRepo.GetActiveInstrumentsByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get active instruments for user %s: %w", userID, err)
+	}
+	m.userInstruments[userID] = symbols
+	return nil
+}
+
+// isSymbolRelevant проверяет, относится ли символ к активным инструментам пользователя
+func (m *StrategyManager) isSymbolRelevant(userID, symbol string) bool {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	for _, s := range m.userInstruments[userID] {
+		if s == symbol {
+			return true
+		}
+	}
+	return false
+}
+
 // HandleTicker обрабатывает тикер
 func (m *StrategyManager) HandleTicker(ctx context.Context, ticker bybit.TickerMessage) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
-	for _, strategies := range m.strategies {
-		for _, s := range strategies {
-			s.OnTicker(ctx, ticker)
+	for userID, strategies := range m.strategies {
+		if m.isSymbolRelevant(userID, ticker.Symbol) {
+			for _, s := range strategies {
+				s.OnTicker(ctx, ticker)
+			}
 		}
 	}
 }
@@ -79,10 +91,11 @@ func (m *StrategyManager) HandleTicker(ctx context.Context, ticker bybit.TickerM
 func (m *StrategyManager) HandleOrderBook(ctx context.Context, orderBook bybit.OrderBookMessage) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
-	for _, strategies := range m.strategies {
-		for _, s := range strategies {
-			s.OnOrderBook(ctx, orderBook)
+	for userID, strategies := range m.strategies {
+		if m.isSymbolRelevant(userID, orderBook.Symbol) {
+			for _, s := range strategies {
+				s.OnOrderBook(ctx, orderBook)
+			}
 		}
 	}
 }
@@ -91,10 +104,11 @@ func (m *StrategyManager) HandleOrderBook(ctx context.Context, orderBook bybit.O
 func (m *StrategyManager) HandleTrade(ctx context.Context, trade bybit.TradeMessage) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
-	for _, strategies := range m.strategies {
-		for _, s := range strategies {
-			s.OnTrade(ctx, trade)
+	for userID, strategies := range m.strategies {
+		if m.isSymbolRelevant(userID, trade.Symbol) {
+			for _, s := range strategies {
+				s.OnTrade(ctx, trade)
+			}
 		}
 	}
 }
@@ -103,10 +117,11 @@ func (m *StrategyManager) HandleTrade(ctx context.Context, trade bybit.TradeMess
 func (m *StrategyManager) HandleOrder(ctx context.Context, order bybit.OrderMessage) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
-	for _, strategies := range m.strategies {
-		for _, s := range strategies {
-			s.OnOrder(ctx, order)
+	for userID, strategies := range m.strategies {
+		if m.isSymbolRelevant(userID, order.Symbol) {
+			for _, s := range strategies {
+				s.OnOrder(ctx, order)
+			}
 		}
 	}
 }
@@ -115,10 +130,11 @@ func (m *StrategyManager) HandleOrder(ctx context.Context, order bybit.OrderMess
 func (m *StrategyManager) HandleExecution(ctx context.Context, execution bybit.ExecutionMessage) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
-	for _, strategies := range m.strategies {
-		for _, s := range strategies {
-			s.OnExecution(ctx, execution)
+	for userID, strategies := range m.strategies {
+		if m.isSymbolRelevant(userID, execution.Symbol) {
+			for _, s := range strategies {
+				s.OnExecution(ctx, execution)
+			}
 		}
 	}
 }
@@ -127,7 +143,7 @@ func (m *StrategyManager) HandleExecution(ctx context.Context, execution bybit.E
 func (m *StrategyManager) HandleWallet(ctx context.Context, wallet bybit.WalletMessage) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	for _, strategies := range m.strategies {
 		for _, s := range strategies {
 			s.OnWallet(ctx, wallet)
@@ -139,7 +155,6 @@ func (m *StrategyManager) HandleWallet(ctx context.Context, wallet bybit.WalletM
 func (m *StrategyManager) Start(ctx context.Context) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
 	for _, strategies := range m.strategies {
 		for _, s := range strategies {
 			s.Start(ctx)
@@ -151,7 +166,6 @@ func (m *StrategyManager) Start(ctx context.Context) {
 func (m *StrategyManager) Stop(ctx context.Context) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
 	for _, strategies := range m.strategies {
 		for _, s := range strategies {
 			s.Stop(ctx)
@@ -160,7 +174,7 @@ func (m *StrategyManager) Stop(ctx context.Context) {
 }
 
 // GetStrategies возвращает все стратегии пользователя
-func (m *StrategyManager) GetStrategies(userID string) []Strategy {
+func (m *StrategyManager) GetStrategies(userID string) []types.Strategy {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	return m.strategies[userID]
@@ -170,7 +184,6 @@ func (m *StrategyManager) GetStrategies(userID string) []Strategy {
 func (m *StrategyManager) GetStrategiesInfo() map[string][]string {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
 	info := make(map[string][]string)
 	for userID, strategies := range m.strategies {
 		var strategyNames []string
@@ -180,4 +193,41 @@ func (m *StrategyManager) GetStrategiesInfo() map[string][]string {
 		info[userID] = strategyNames
 	}
 	return info
-} 
+}
+
+// Методы для чтения данных из Redis
+func (m *StrategyManager) GetTicker(ctx context.Context, symbol string) (*bybit.TickerMessage, error) {
+	return storages.GetTicker(ctx, symbol)
+}
+
+func (m *StrategyManager) GetTickerHistory(ctx context.Context, symbol string, limit int64) ([]bybit.TickerMessage, error) {
+	return storages.GetTickerHistory(ctx, symbol, limit)
+}
+
+func (m *StrategyManager) GetOrderBook(ctx context.Context, symbol string) (*bybit.OrderBookMessage, error) {
+	return storages.GetOrderBook(ctx, symbol)
+}
+
+func (m *StrategyManager) GetOrderBookHistory(ctx context.Context, symbol string, limit int64) ([]bybit.OrderBookMessage, error) {
+	return storages.GetOrderBookHistory(ctx, symbol, limit)
+}
+
+func (m *StrategyManager) GetOrderBookSpread(ctx context.Context, symbol string) (decimal.Decimal, error) {
+	return storages.GetOrderBookSpread(ctx, symbol)
+}
+
+func (m *StrategyManager) GetPublicTrades(ctx context.Context, symbol string, limit int64) ([]bybit.TradeMessage, error) {
+	return storages.GetPublicTrades(ctx, symbol, limit)
+}
+
+func (m *StrategyManager) GetPrivateOrder(ctx context.Context, userID, orderID string) (*bybit.OrderMessage, error) {
+	return storages.GetPrivateOrder(ctx, userID, orderID)
+}
+
+func (m *StrategyManager) GetPrivateExecution(ctx context.Context, userID, execID string) (*bybit.ExecutionMessage, error) {
+	return storages.GetPrivateExecution(ctx, userID, execID)
+}
+
+func (m *StrategyManager) GetPrivateWallet(ctx context.Context, userID string) (*bybit.WalletMessage, error) {
+	return storages.GetPrivateWallet(ctx, userID)
+}

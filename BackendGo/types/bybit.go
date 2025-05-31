@@ -3,8 +3,8 @@ package types
 import (
 	"CryptoLens_Backend/integration/bybit"
 	"CryptoLens_Backend/models"
-	"CryptoLens_Backend/trading"
 	"context"
+	"github.com/shopspring/decimal"
 	"net/http"
 )
 
@@ -16,7 +16,7 @@ type BybitServiceInterface interface {
 	StartInstrumentsUpdate(ctx context.Context)
 	StartWebSocket(ctx context.Context)
 	StartPrivateWebSocket(ctx context.Context)
-	GetStrategyManager() *trading.StrategyManager
+	GetStrategyManager() StrategyManagerInterface
 	GetUserStrategyService() UserStrategyServiceInterface
 }
 
@@ -31,4 +31,30 @@ type BybitHandlerInterface interface {
 type BybitWebSocketHandlerInterface interface {
 	HandleMessage(ctx context.Context, msg bybit.WebSocketMessage)
 	HandlePrivateMessage(ctx context.Context, msg bybit.WebSocketMessage, userID string)
+}
+
+// StrategyManagerInterface определяет интерфейс для менеджера стратегий
+type StrategyManagerInterface interface {
+	AddStrategy(userID string, strategy Strategy)
+	RemoveStrategy(userID string, strategy Strategy)
+	UpdateUserInstruments(ctx context.Context, userID string) error
+	HandleTicker(ctx context.Context, ticker bybit.TickerMessage)
+	HandleOrderBook(ctx context.Context, orderBook bybit.OrderBookMessage)
+	HandleTrade(ctx context.Context, trade bybit.TradeMessage)
+	HandleOrder(ctx context.Context, order bybit.OrderMessage)
+	HandleExecution(ctx context.Context, execution bybit.ExecutionMessage)
+	HandleWallet(ctx context.Context, wallet bybit.WalletMessage)
+	Start(ctx context.Context)
+	Stop(ctx context.Context)
+	GetStrategies(userID string) []Strategy
+	GetStrategiesInfo() map[string][]string
+	GetTicker(ctx context.Context, symbol string) (*bybit.TickerMessage, error)
+	GetTickerHistory(ctx context.Context, symbol string, limit int64) ([]bybit.TickerMessage, error)
+	GetOrderBook(ctx context.Context, symbol string) (*bybit.OrderBookMessage, error)
+	GetOrderBookHistory(ctx context.Context, symbol string, limit int64) ([]bybit.OrderBookMessage, error)
+	GetOrderBookSpread(ctx context.Context, symbol string) (decimal.Decimal, error)
+	GetPublicTrades(ctx context.Context, symbol string, limit int64) ([]bybit.TradeMessage, error)
+	GetPrivateOrder(ctx context.Context, userID, orderID string) (*bybit.OrderMessage, error)
+	GetPrivateExecution(ctx context.Context, userID, execID string) (*bybit.ExecutionMessage, error)
+	GetPrivateWallet(ctx context.Context, userID string) (*bybit.WalletMessage, error)
 }

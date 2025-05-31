@@ -28,7 +28,7 @@ type BybitService struct {
 	bybitInstrumentRepo *repositories.BybitInstrumentRepository
 	userInstrumentRepo  *repositories.UserInstrumentRepository
 	wsHandler           types.BybitWebSocketHandlerInterface
-	strategyManager     *trading.StrategyManager
+	strategyManager     types.StrategyManagerInterface
 	userStrategyService types.UserStrategyServiceInterface
 	wsMutex             sync.Mutex
 }
@@ -41,7 +41,7 @@ func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserServ
 		wsURL = env.GetBybitWsTestUrl() + "/v5/public/spot"
 	}
 	wsClient := bybit.NewWebSocketClient(wsURL, recvWindow, "", "")
-	strategyManager := trading.NewStrategyManager(bybitClient)
+	strategyManager := trading.NewStrategyManager(bybitClient, repositories.NewUserInstrumentRepository(db))
 	userStrategyRepo := repositories.NewUserStrategyRepository(db)
 	userStrategyService := NewUserStrategyService(userStrategyRepo, strategyManager)
 
@@ -457,7 +457,7 @@ func (s *BybitService) closePrivateWebSockets() {
 	}
 }
 
-func (s *BybitService) GetStrategyManager() *trading.StrategyManager {
+func (s *BybitService) GetStrategyManager() types.StrategyManagerInterface {
 	return s.strategyManager
 }
 

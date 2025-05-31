@@ -59,15 +59,19 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 
 	// Инициализация сервисов
 	userService := services.NewUserService(userRepo, jwtKey, db)
-	userInstrumentService := services.NewUserInstrumentService(userInstrumentRepo, bybitInstrumentRepo)
 
-	// Создаем WebSocketHandler
-	strategyManager := trading.NewStrategyManager(bybitClient)
-	webSocketHandler := handlers.NewBybitWebSocketHandler(strategyManager)
+	// Создаем менеджер стратегий
+	strategyManager := trading.NewStrategyManager(bybitClient, userInstrumentRepo)
 
-	// Создаем BybitService с WebSocketHandler
-	bybitService := services.NewBybitService(bybitClient, db, userService, webSocketHandler)
-	userStrategyService := services.NewUserStrategyService(userStrategyRepo, bybitService.GetStrategyManager())
+	// Создаем обработчик WebSocket
+	wsHandler := handlers.NewBybitWebSocketHandler(strategyManager)
+
+	// Создаем сервисы, зависящие от менеджера стратегий
+	userInstrumentService := services.NewUserInstrumentService(userInstrumentRepo, bybitInstrumentRepo, strategyManager)
+	userStrategyService := services.NewUserStrategyService(userStrategyRepo, strategyManager)
+
+	// Создаем сервис Bybit
+	bybitService := services.NewBybitService(bybitClient, db, userService, wsHandler)
 
 	// Инициализация обработчиков
 	userHandler := handlers.NewUserHandler(userService)
@@ -100,15 +104,15 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 		UserStrategyService:   userStrategyService,
 		UserStrategyHandler:   userStrategyHandler,
 		UserStrategyRoutes:    userStrategyRoutes,
-		WebSocketHandler:      webSocketHandler,
+		WebSocketHandler:      wsHandler,
 	}
 }
 
 func (c *Container) RegisterRoutes() {
 	c.UserRoutes.Register()
 	c.UserInstrumentRoutes.Register()
-	c.BybitRoutes.Register()
 	c.UserStrategyRoutes.Register()
+	c.BybitRoutes.Register()
 }
 
 func (c *Container) StartBackgroundTasks(ctx context.Context) {
