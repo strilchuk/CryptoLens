@@ -80,7 +80,7 @@ func GetTicker(ctx context.Context, symbol string) (*bybit.TickerMessage, error)
 func GetOrderBook(ctx context.Context, symbol string) (*bybit.OrderBookMessage, error) {
 	key := fmt.Sprintf("orderbook:%s", symbol)
 	data, err := redis.Client.Get(ctx, key).Bytes()
-	if err != nil {
+		if err != nil {
 		return nil, fmt.Errorf("failed to get orderbook: %w", err)
 	}
 
@@ -98,7 +98,7 @@ func GetPublicTrades(ctx context.Context, symbol string, limit int64) ([]bybit.T
 	data, err := redis.Client.LRange(ctx, key, -limit, -1).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get trades: %w", err)
-	}
+		}
 
 	var trades []bybit.TradeMessage
 	for _, item := range data {
@@ -151,7 +151,7 @@ func SavePrivateWallet(ctx context.Context, userID string, wallet bybit.WalletMe
 func GetPrivateOrder(ctx context.Context, userID string, orderID string) (*bybit.OrderMessage, error) {
 	key := fmt.Sprintf("private:%s:order:%s", userID, orderID)
 	data, err := redis.Client.Get(ctx, key).Bytes()
-	if err != nil {
+		if err != nil {
 		return nil, fmt.Errorf("failed to get order: %w", err)
 	}
 
@@ -167,7 +167,7 @@ func GetPrivateOrder(ctx context.Context, userID string, orderID string) (*bybit
 func GetPrivateExecution(ctx context.Context, userID string, execID string) (*bybit.ExecutionMessage, error) {
 	key := fmt.Sprintf("private:%s:execution:%s", userID, execID)
 	data, err := redis.Client.Get(ctx, key).Bytes()
-	if err != nil {
+			if err != nil {
 		return nil, fmt.Errorf("failed to get execution: %w", err)
 	}
 
@@ -177,7 +177,7 @@ func GetPrivateExecution(ctx context.Context, userID string, execID string) (*by
 	}
 
 	return &execution, nil
-}
+			}
 
 // GetPrivateWallet получает данные приватного кошелька
 func GetPrivateWallet(ctx context.Context, userID string) (*bybit.WalletMessage, error) {
@@ -243,7 +243,7 @@ func GetTickerHistory(ctx context.Context, symbol string, limit int64) ([]bybit.
 		var ticker bybit.TickerMessage
 		if err := json.Unmarshal([]byte(item), &ticker); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal ticker: %w", err)
-		}
+			}
 		tickers = append(tickers, ticker)
 	}
 	return tickers, nil
@@ -277,7 +277,7 @@ func GetOrderBookHistory(ctx context.Context, symbol string, limit int64) ([]byb
 		var orderBook bybit.OrderBookMessage
 		if err := json.Unmarshal([]byte(item), &orderBook); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal orderbook: %w", err)
-		}
+	}
 		orderBooks = append(orderBooks, orderBook)
 	}
 	return orderBooks, nil

@@ -10,7 +10,6 @@ import (
 	"CryptoLens_Backend/types"
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"github.com/shopspring/decimal"
 	"strconv"
@@ -27,6 +26,7 @@ type BybitService struct {
 	userService         *UserService
 	bybitInstrumentRepo *repositories.BybitInstrumentRepository
 	userInstrumentRepo  *repositories.UserInstrumentRepository
+	bybitAccountRepo    types.BybitAccountRepositoryInterface
 	wsHandler           types.BybitWebSocketHandlerInterface
 	strategyManager     types.StrategyManagerInterface
 	userStrategyService types.UserStrategyServiceInterface
@@ -41,7 +41,11 @@ func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserServ
 		wsURL = env.GetBybitWsTestUrl() + "/v5/public/spot"
 	}
 	wsClient := bybit.NewWebSocketClient(wsURL, recvWindow, "", "")
-	strategyManager := trading.NewStrategyManager(bybitClient, repositories.NewUserInstrumentRepository(db))
+	strategyManager := trading.NewStrategyManager(
+		bybitClient,
+		repositories.NewUserInstrumentRepository(db),
+		repositories.NewBybitAccountRepository(db),
+	)
 	userStrategyRepo := repositories.NewUserStrategyRepository(db)
 	userStrategyService := NewUserStrategyService(userStrategyRepo, strategyManager)
 
@@ -53,6 +57,7 @@ func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserServ
 		userService:         userService,
 		bybitInstrumentRepo: repositories.NewBybitInstrumentRepository(db),
 		userInstrumentRepo:  repositories.NewUserInstrumentRepository(db),
+		bybitAccountRepo:    repositories.NewBybitAccountRepository(db),
 		wsHandler:           wsHandler,
 		strategyManager:     strategyManager,
 		userStrategyService: userStrategyService,
@@ -67,7 +72,7 @@ func (s *BybitService) GetWalletBalance(ctx context.Context, token string) (*byb
 	}
 
 	// Получаем аккаунт Bybit пользователя
-	account, err := s.getBybitAccount(ctx, userID)
+	account, err := s.bybitAccountRepo.GetActiveAccountByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +94,7 @@ func (s *BybitService) GetFeeRate(ctx context.Context, token string, category st
 	}
 
 	// Получаем аккаунт Bybit пользователя
-	account, err := s.getBybitAccount(ctx, userID)
+	account, err := s.bybitAccountRepo.GetActiveAccountByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -177,32 +182,6 @@ func (s *BybitService) updateInstruments(ctx context.Context) error {
 
 	logger.LogInfo("Successfully updated %d instruments", len(instruments))
 	return nil
-}
-
-func (s *BybitService) getBybitAccount(ctx context.Context, userID string) (*bybit.BybitAccount, error) {
-	var account bybit.BybitAccount
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, api_key, api_secret, account_type, is_active 
-		FROM bybit_accounts 
-		WHERE user_id = $1 AND is_active = true AND deleted_at IS NULL`,
-		userID,
-	).Scan(
-		&account.ID,
-		&account.UserID,
-		&account.APIKey,
-		&account.APISecret,
-		&account.AccountType,
-		&account.IsActive,
-	)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, errors.New("аккаунт Bybit не найден")
-		}
-		return nil, err
-	}
-
-	return &account, nil
 }
 
 // parseDecimal преобразует строку в decimal.Decimal
@@ -335,7 +314,7 @@ func (s *BybitService) StartPrivateWebSocket(ctx context.Context) {
 				return
 			default:
 				// Получаем активные аккаунты Bybit
-				accounts, err := s.getActiveBybitAccounts(ctx)
+				accounts, err := s.bybitAccountRepo.GetActiveAccounts(ctx)
 				if err != nil {
 					logger.LogError("Failed to get active Bybit accounts: %v", err)
 					time.Sleep(5 * time.Second)
@@ -402,37 +381,6 @@ func (s *BybitService) StartPrivateWebSocket(ctx context.Context) {
 			}
 		}
 	}()
-}
-
-// getActiveBybitAccounts получает все активные аккаунты Bybit
-func (s *BybitService) getActiveBybitAccounts(ctx context.Context) ([]bybit.BybitAccount, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, user_id, api_key, api_secret, account_type, is_active 
-		FROM bybit_accounts 
-		WHERE is_active = true AND deleted_at IS NULL`,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query active accounts: %w", err)
-	}
-	defer rows.Close()
-
-	var accounts []bybit.BybitAccount
-	for rows.Next() {
-		var account bybit.BybitAccount
-		if err := rows.Scan(
-			&account.ID,
-			&account.UserID,
-			&account.APIKey,
-			&account.APISecret,
-			&account.AccountType,
-			&account.IsActive,
-		); err != nil {
-			return nil, fmt.Errorf("failed to scan account: %w", err)
-		}
-		accounts = append(accounts, account)
-	}
-
-	return accounts, nil
 }
 
 // isAccountActive проверяет, активен ли аккаунт

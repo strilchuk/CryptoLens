@@ -13,20 +13,60 @@ import (
 // StrategyManager управляет стратегиями
 type StrategyManager struct {
 	strategies         map[string][]types.Strategy // userID -> список стратегий
-	userInstruments    map[string][]string   // userID -> список символов из user_instruments
+	userInstruments    map[string][]string         // userID -> список символов из user_instruments
 	bybitClient        bybit.Client
 	userInstrumentRepo types.UserInstrumentRepositoryInterface
+	bybitAccountRepo   types.BybitAccountRepositoryInterface
 	mutex              sync.Mutex
 }
 
 // NewStrategyManager создает новый менеджер стратегий
-func NewStrategyManager(client bybit.Client, userInstrumentRepo types.UserInstrumentRepositoryInterface) *StrategyManager {
+func NewStrategyManager(client bybit.Client, userInstrumentRepo types.UserInstrumentRepositoryInterface, bybitAccountRepo types.BybitAccountRepositoryInterface) *StrategyManager {
 	return &StrategyManager{
 		strategies:         make(map[string][]types.Strategy),
 		userInstruments:    make(map[string][]string),
 		bybitClient:        client,
 		userInstrumentRepo: userInstrumentRepo,
+		bybitAccountRepo:   bybitAccountRepo,
 	}
+}
+
+// getBybitAccount получает аккаунт Bybit для пользователя
+func (m *StrategyManager) getBybitAccount(ctx context.Context, userID string) (*bybit.BybitAccount, error) {
+	return m.bybitAccountRepo.GetActiveAccountByUserID(ctx, userID)
+}
+
+// CreateOrder создает ордер
+func (m *StrategyManager) CreateOrder(ctx context.Context, userID, symbol, side, orderType, qty string, price *string) (*bybit.BybitOrderResponse, error) {
+	// Получаем аккаунт Bybit пользователя
+	account, err := m.getBybitAccount(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Bybit account: %w", err)
+	}
+
+	// Создаем ордер через клиент Bybit
+	order, err := m.bybitClient.CreateOrder(ctx, account, symbol, side, orderType, qty, price, "GTC", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create order: %w", err)
+	}
+
+	return order, nil
+}
+
+// CancelOrder отменяет ордер
+func (m *StrategyManager) CancelOrder(ctx context.Context, userID, symbol, orderID string) error {
+	// Получаем аккаунт Bybit пользователя
+	account, err := m.getBybitAccount(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get Bybit account: %w", err)
+	}
+
+	// Отменяем ордер через клиент Bybit
+	if err, _ := m.bybitClient.CancelOrder(ctx, account, symbol, orderID); err != nil {
+		return fmt.Errorf("failed to cancel order: %w", err)
+	}
+
+	return nil
 }
 
 // AddStrategy добавляет стратегию для пользователя

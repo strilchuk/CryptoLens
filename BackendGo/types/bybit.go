@@ -58,3 +58,12 @@ type StrategyManagerInterface interface {
 	GetPrivateExecution(ctx context.Context, userID, execID string) (*bybit.ExecutionMessage, error)
 	GetPrivateWallet(ctx context.Context, userID string) (*bybit.WalletMessage, error)
 }
+
+// BybitAccountRepositoryInterface определяет методы для работы с аккаунтами Bybit
+type BybitAccountRepositoryInterface interface {
+	GetActiveAccountByUserID(ctx context.Context, userID string) (*bybit.BybitAccount, error)
+	GetActiveAccounts(ctx context.Context) ([]bybit.BybitAccount, error)
+	CreateAccount(ctx context.Context, userID string, apiKey, apiSecret, accountType string) (*bybit.BybitAccount, error)
+	UpdateAccount(ctx context.Context, userID string, apiKey, apiSecret, accountType string, isActive bool) error
+	DeleteAccount(ctx context.Context, userID string) error
+}
