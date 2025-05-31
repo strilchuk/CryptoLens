@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/shopspring/decimal"
 )
 
 type UserStrategyService struct {
@@ -61,6 +62,17 @@ func (s *UserStrategyService) AddStrategy(ctx context.Context, userID string, st
 				testStrategy := trading.NewTestStrategy(st.UserID)
 				s.strategyManager.AddStrategy(st.UserID, testStrategy)
 				go testStrategy.Start(ctx)
+			case "spread_scalping":
+				spreadStrategy := trading.NewSpreadScalpingStrategy(
+					strategy.UserID,         // userID
+					"BTCUSDT",               // symbol
+					s.strategyManager,       // manager
+					decimal.NewFromFloat(5), // minSpread (например, 5 USDT)
+					decimal.NewFromFloat(1), // minProfit (например, 1 USDT)
+					"0.001",                 // quantity (например, 0.001 BTC)
+				)
+				s.strategyManager.AddStrategy(strategy.UserID, spreadStrategy)
+				go spreadStrategy.Start(ctx)
 			default:
 				logger.LogError("Неизвестная стратегия при добавлении: %s", st.StrategyName)
 			}
@@ -104,7 +116,7 @@ func (s *UserStrategyService) UpdateStrategyStatus(ctx context.Context, id strin
 		for _, st := range strategies {
 			s.strategyManager.RemoveStrategy(strategy.UserID, st)
 		}
-		
+
 		// Получаем все активные стратегии пользователя
 		activeStrategies, err := s.userStrategyRepo.GetByUserID(ctx, strategy.UserID)
 		if err != nil {
@@ -119,6 +131,17 @@ func (s *UserStrategyService) UpdateStrategyStatus(ctx context.Context, id strin
 					testStrategy := trading.NewTestStrategy(st.UserID)
 					s.strategyManager.AddStrategy(st.UserID, testStrategy)
 					go testStrategy.Start(ctx)
+				case "spread_scalping":
+					spreadStrategy := trading.NewSpreadScalpingStrategy(
+						strategy.UserID,         // userID
+						"BTCUSDT",               // symbol
+						s.strategyManager,       // manager
+						decimal.NewFromFloat(5), // minSpread (например, 5 USDT)
+						decimal.NewFromFloat(1), // minProfit (например, 1 USDT)
+						"0.001",                 // quantity (например, 0.001 BTC)
+					)
+					s.strategyManager.AddStrategy(strategy.UserID, spreadStrategy)
+					go spreadStrategy.Start(ctx)
 				}
 			}
 		}
@@ -145,7 +168,7 @@ func (s *UserStrategyService) RemoveStrategy(ctx context.Context, id string) err
 	for _, st := range strategies {
 		s.strategyManager.RemoveStrategy(strategy.UserID, st)
 	}
-	
+
 	// Получаем все активные стратегии пользователя
 	activeStrategies, err := s.userStrategyRepo.GetByUserID(ctx, strategy.UserID)
 	if err != nil {
@@ -160,6 +183,17 @@ func (s *UserStrategyService) RemoveStrategy(ctx context.Context, id string) err
 				testStrategy := trading.NewTestStrategy(st.UserID)
 				s.strategyManager.AddStrategy(st.UserID, testStrategy)
 				go testStrategy.Start(ctx)
+			case "spread_scalping":
+				spreadStrategy := trading.NewSpreadScalpingStrategy(
+					strategy.UserID,         // userID
+					"BTCUSDT",               // symbol
+					s.strategyManager,       // manager
+					decimal.NewFromFloat(5), // minSpread (например, 5 USDT)
+					decimal.NewFromFloat(1), // minProfit (например, 1 USDT)
+					"0.001",                 // quantity (например, 0.001 BTC)
+				)
+				s.strategyManager.AddStrategy(strategy.UserID, spreadStrategy)
+				go spreadStrategy.Start(ctx)
 			}
 		}
 	}
@@ -186,6 +220,17 @@ func (s *UserStrategyService) LoadActiveStrategies(ctx context.Context) error {
 			testStrategy := trading.NewTestStrategy(strategy.UserID)
 			s.strategyManager.AddStrategy(strategy.UserID, testStrategy)
 			go testStrategy.Start(ctx)
+		case "spread_scalping":
+			spreadStrategy := trading.NewSpreadScalpingStrategy(
+				strategy.UserID,         // userID
+				"BTCUSDT",               // symbol
+				s.strategyManager,       // manager
+				decimal.NewFromFloat(5), // minSpread (например, 5 USDT)
+				decimal.NewFromFloat(1), // minProfit (например, 1 USDT)
+				"0.001",                 // quantity (например, 0.001 BTC)
+			)
+			s.strategyManager.AddStrategy(strategy.UserID, spreadStrategy)
+			go spreadStrategy.Start(ctx)
 		default:
 			logger.LogError("Неизвестная стратегия при загрузке: %s", strategy.StrategyName)
 		}
