@@ -76,15 +76,18 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 		h.handleOrderBookMessage(ctx, orderBookMsg)
 
 	case "publicTrade":
-		var tradeMsg bybit.TradeMessage
-		if err := json.Unmarshal(msg.Data, &tradeMsg); err != nil {
+		var trades []bybit.TradeMessage
+		if err := json.Unmarshal(msg.Data, &trades); err != nil {
 			logger.LogError("Ошибка разбора сообщения о сделке: %v", err)
 			return
 		}
-		if err := storages.SavePublicTrade(ctx, symbol, tradeMsg); err != nil {
-			logger.LogError("Ошибка сохранения сделки: %v", err)
+		for _, trade := range trades {
+			if err := storages.SavePublicTrade(ctx, symbol, trade); err != nil {
+				logger.LogError("Ошибка сохранения сделки: %v", err)
+			}
+			logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
+				trade.Symbol, trade.Price, trade.Volume, trade.Side)
 		}
-		h.handleTradeMessage(ctx, tradeMsg)
 
 	default:
 		logger.LogInfo("Неизвестный тип сообщения: %s", messageType)
