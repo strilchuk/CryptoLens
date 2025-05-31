@@ -51,7 +51,8 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 	}
 
 	messageType := topicParts[0]
-	symbol := topicParts[1]
+	// Получаем последнюю часть топика как символ
+	symbol := topicParts[len(topicParts)-1]
 
 	switch messageType {
 	case "tickers":
