@@ -7,6 +7,7 @@ import (
 	"CryptoLens_Backend/trading"
 	"context"
 	"encoding/json"
+	"github.com/shopspring/decimal"
 	"strings"
 )
 
@@ -62,6 +63,9 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 		if err := storages.SaveTicker(ctx, symbol, tickerMsg); err != nil {
 			logger.LogError("Ошибка сохранения тикера: %v", err)
 		}
+		if err := storages.SaveTickerHistory(ctx, symbol, tickerMsg); err != nil {
+			logger.LogError("Ошибка сохранения истории тикера: %v", err)
+		}
 		h.handleTickerMessage(ctx, tickerMsg)
 
 	case "orderbook":
@@ -73,7 +77,22 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 		if err := storages.SaveOrderBook(ctx, symbol, orderBookMsg); err != nil {
 			logger.LogError("Ошибка сохранения книги ордеров: %v", err)
 		}
+		if err := storages.SaveOrderBookHistory(ctx, symbol, orderBookMsg); err != nil {
+			logger.LogError("Ошибка сохранения истории книги ордеров: %v", err)
+		}
+
+		// Вычисляем и сохраняем спред
+		if len(orderBookMsg.Bids) > 0 && len(orderBookMsg.Asks) > 0 {
+			bestBid, _ := decimal.NewFromString(orderBookMsg.Bids[0][0])
+			bestAsk, _ := decimal.NewFromString(orderBookMsg.Asks[0][0])
+			spread := bestAsk.Sub(bestBid)
+			if err := storages.SaveOrderBookSpread(ctx, symbol, spread); err != nil {
+				logger.LogError("Ошибка сохранения спреда: %v", err)
+			}
+		}
+
 		h.handleOrderBookMessage(ctx, orderBookMsg)
+		h.strategyManager.HandleOrderBook(ctx, orderBookMsg)
 
 	case "publicTrade":
 		var trades []bybit.TradeMessage
@@ -85,8 +104,8 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 			if err := storages.SavePublicTrade(ctx, symbol, trade); err != nil {
 				logger.LogError("Ошибка сохранения сделки: %v", err)
 			}
-			logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
-				trade.Symbol, trade.Price, trade.Volume, trade.Side)
+			h.handleTradeMessage(ctx, trade)
+			h.strategyManager.HandleTrade(ctx, trade)
 		}
 
 	default:

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/shopspring/decimal"
 	"time"
 )
 
@@ -42,7 +43,21 @@ func SavePublicTrade(ctx context.Context, symbol string, trade bybit.TradeMessag
 	}
 
 	// Добавляем сделку в список
-	return redis.Client.RPush(ctx, key, data).Err()
+	if err := redis.Client.RPush(ctx, key, data).Err(); err != nil {
+		return fmt.Errorf("failed to save trade: %w", err)
+	}
+
+	// Ограничиваем список 1000 сделками
+	if err := redis.Client.LTrim(ctx, key, 0, 999).Err(); err != nil {
+		return fmt.Errorf("failed to trim trade list: %w", err)
+	}
+
+	// Устанавливаем TTL на 24 часа
+	if err := redis.Client.Expire(ctx, key, 24*time.Hour).Err(); err != nil {
+		return fmt.Errorf("failed to set trade list TTL: %w", err)
+	}
+
+	return nil
 }
 
 // GetTicker получает данные тикера
@@ -178,6 +193,94 @@ func GetPrivateWallet(ctx context.Context, userID string) (*bybit.WalletMessage,
 	}
 
 	return &wallet, nil
+}
+
+// SaveOrderBookSpread сохраняет спред книги ордеров
+func SaveOrderBookSpread(ctx context.Context, symbol string, spread decimal.Decimal) error {
+	key := fmt.Sprintf("orderbook:spread:%s", symbol)
+	return redis.Client.Set(ctx, key, spread.String(), time.Hour).Err()
+}
+
+// GetOrderBookSpread получает текущий спред для книги ордеров
+func GetOrderBookSpread(ctx context.Context, symbol string) (decimal.Decimal, error) {
+	key := fmt.Sprintf("orderbook:spread:%s", symbol)
+	data, err := redis.Client.Get(ctx, key).Result()
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("failed to get spread: %w", err)
+	}
+	spread, err := decimal.NewFromString(data)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("failed to parse spread: %w", err)
+	}
+	return spread, nil
+}
+
+// SaveTickerHistory сохраняет тикер в список истории
+func SaveTickerHistory(ctx context.Context, symbol string, ticker bybit.TickerMessage) error {
+	key := fmt.Sprintf("tickers:history:%s", symbol)
+	data, err := json.Marshal(ticker)
+	if err != nil {
+		return fmt.Errorf("failed to marshal ticker: %w", err)
+	}
+	if err := redis.Client.LPush(ctx, key, data).Err(); err != nil {
+		return fmt.Errorf("failed to save ticker history: %w", err)
+	}
+	if err := redis.Client.LTrim(ctx, key, 0, 999).Err(); err != nil { // Храним 1000 записей
+		return fmt.Errorf("failed to trim ticker history: %w", err)
+	}
+	return redis.Client.Expire(ctx, key, time.Hour).Err()
+}
+
+// GetTickerHistory получает последние N тикеров
+func GetTickerHistory(ctx context.Context, symbol string, limit int64) ([]bybit.TickerMessage, error) {
+	key := fmt.Sprintf("tickers:history:%s", symbol)
+	data, err := redis.Client.LRange(ctx, key, 0, limit-1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ticker history: %w", err)
+	}
+	var tickers []bybit.TickerMessage
+	for _, item := range data {
+		var ticker bybit.TickerMessage
+		if err := json.Unmarshal([]byte(item), &ticker); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal ticker: %w", err)
+		}
+		tickers = append(tickers, ticker)
+	}
+	return tickers, nil
+}
+
+// SaveOrderBookHistory сохраняет книгу ордеров в список истории
+func SaveOrderBookHistory(ctx context.Context, symbol string, orderBook bybit.OrderBookMessage) error {
+	key := fmt.Sprintf("orderbook:history:%s", symbol)
+	data, err := json.Marshal(orderBook)
+	if err != nil {
+		return fmt.Errorf("failed to marshal orderbook: %w", err)
+	}
+	if err := redis.Client.LPush(ctx, key, data).Err(); err != nil {
+		return fmt.Errorf("failed to save orderbook history: %w", err)
+	}
+	if err := redis.Client.LTrim(ctx, key, 0, 999).Err(); err != nil { // Храним 10 записей
+		return fmt.Errorf("failed to trim orderbook history: %w", err)
+	}
+	return redis.Client.Expire(ctx, key, time.Hour).Err()
+}
+
+// GetOrderBookHistory получает последние N книг ордеров
+func GetOrderBookHistory(ctx context.Context, symbol string, limit int64) ([]bybit.OrderBookMessage, error) {
+	key := fmt.Sprintf("orderbook:history:%s", symbol)
+	data, err := redis.Client.LRange(ctx, key, 0, limit-1).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get orderbook history: %w", err)
+	}
+	var orderBooks []bybit.OrderBookMessage
+	for _, item := range data {
+		var orderBook bybit.OrderBookMessage
+		if err := json.Unmarshal([]byte(item), &orderBook); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal orderbook: %w", err)
+		}
+		orderBooks = append(orderBooks, orderBook)
+	}
+	return orderBooks, nil
 }
 
 // Close закрывает соединение с Redis
