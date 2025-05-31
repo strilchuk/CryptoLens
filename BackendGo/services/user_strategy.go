@@ -8,21 +8,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/shopspring/decimal"
 )
 
 type UserStrategyService struct {
-	userStrategyRepo *repositories.UserStrategyRepository
-	strategyManager  *trading.StrategyManager
+	userStrategyRepo    *repositories.UserStrategyRepository
+	strategyManager     *trading.StrategyManager
+	bybitInstrumentRepo *repositories.BybitInstrumentRepository
 }
 
 func NewUserStrategyService(
 	userStrategyRepo *repositories.UserStrategyRepository,
 	strategyManager *trading.StrategyManager,
+	bybitInstrumentRepo *repositories.BybitInstrumentRepository,
 ) *UserStrategyService {
 	return &UserStrategyService{
-		userStrategyRepo: userStrategyRepo,
-		strategyManager:  strategyManager,
+		userStrategyRepo:    userStrategyRepo,
+		strategyManager:     strategyManager,
+		bybitInstrumentRepo: bybitInstrumentRepo,
 	}
 }
 
@@ -64,12 +66,10 @@ func (s *UserStrategyService) AddStrategy(ctx context.Context, userID string, st
 				go testStrategy.Start(ctx)
 			case "spread_scalping":
 				spreadStrategy := trading.NewSpreadScalpingStrategy(
-					strategy.UserID,         // userID
-					"BTCUSDT",               // symbol
-					s.strategyManager,       // manager
-					decimal.NewFromFloat(5), // minSpread (например, 5 USDT)
-					decimal.NewFromFloat(1), // minProfit (например, 1 USDT)
-					"0.001",                 // quantity (например, 0.001 BTC)
+					strategy.UserID,       // userID
+					"BTCUSDT",             // symbol
+					s.strategyManager,     // manager
+					s.bybitInstrumentRepo, // instrumentRepo
 				)
 				s.strategyManager.AddStrategy(strategy.UserID, spreadStrategy)
 				go spreadStrategy.Start(ctx)
@@ -133,12 +133,10 @@ func (s *UserStrategyService) UpdateStrategyStatus(ctx context.Context, id strin
 					go testStrategy.Start(ctx)
 				case "spread_scalping":
 					spreadStrategy := trading.NewSpreadScalpingStrategy(
-						strategy.UserID,         // userID
-						"BTCUSDT",               // symbol
-						s.strategyManager,       // manager
-						decimal.NewFromFloat(5), // minSpread (например, 5 USDT)
-						decimal.NewFromFloat(1), // minProfit (например, 1 USDT)
-						"0.001",                 // quantity (например, 0.001 BTC)
+						strategy.UserID,       // userID
+						"BTCUSDT",             // symbol
+						s.strategyManager,     // manager
+						s.bybitInstrumentRepo, // instrumentRepo
 					)
 					s.strategyManager.AddStrategy(strategy.UserID, spreadStrategy)
 					go spreadStrategy.Start(ctx)
@@ -185,12 +183,10 @@ func (s *UserStrategyService) RemoveStrategy(ctx context.Context, id string) err
 				go testStrategy.Start(ctx)
 			case "spread_scalping":
 				spreadStrategy := trading.NewSpreadScalpingStrategy(
-					strategy.UserID,         // userID
-					"BTCUSDT",               // symbol
-					s.strategyManager,       // manager
-					decimal.NewFromFloat(5), // minSpread (например, 5 USDT)
-					decimal.NewFromFloat(1), // minProfit (например, 1 USDT)
-					"0.001",                 // quantity (например, 0.001 BTC)
+					strategy.UserID,       // userID
+					"BTCUSDT",             // symbol
+					s.strategyManager,     // manager
+					s.bybitInstrumentRepo, // instrumentRepo
 				)
 				s.strategyManager.AddStrategy(strategy.UserID, spreadStrategy)
 				go spreadStrategy.Start(ctx)
@@ -222,12 +218,10 @@ func (s *UserStrategyService) LoadActiveStrategies(ctx context.Context) error {
 			go testStrategy.Start(ctx)
 		case "spread_scalping":
 			spreadStrategy := trading.NewSpreadScalpingStrategy(
-				strategy.UserID,         // userID
-				"BTCUSDT",               // symbol
-				s.strategyManager,       // manager
-				decimal.NewFromFloat(5), // minSpread (например, 5 USDT)
-				decimal.NewFromFloat(1), // minProfit (например, 1 USDT)
-				"0.001",                 // quantity (например, 0.001 BTC)
+				strategy.UserID,       // userID
+				"BTCUSDT",             // symbol
+				s.strategyManager,     // manager
+				s.bybitInstrumentRepo, // instrumentRepo
 			)
 			s.strategyManager.AddStrategy(strategy.UserID, spreadStrategy)
 			go spreadStrategy.Start(ctx)

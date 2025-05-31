@@ -47,7 +47,11 @@ func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserServ
 		repositories.NewBybitAccountRepository(db),
 	)
 	userStrategyRepo := repositories.NewUserStrategyRepository(db)
-	userStrategyService := NewUserStrategyService(userStrategyRepo, strategyManager)
+	userStrategyService := NewUserStrategyService(
+		userStrategyRepo,
+		strategyManager,
+		repositories.NewBybitInstrumentRepository(db),
+	)
 
 	return &BybitService{
 		bybitClient:         bybitClient,

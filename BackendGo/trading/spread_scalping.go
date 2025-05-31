@@ -4,39 +4,103 @@ import (
 	"CryptoLens_Backend/integration/bybit"
 	"CryptoLens_Backend/logger"
 	"CryptoLens_Backend/storages"
+	"CryptoLens_Backend/types"
 	"context"
+	"fmt"
 	"github.com/shopspring/decimal"
+	"time"
 )
 
 // SpreadScalpingStrategy реализует стратегию спред-скальпинга
 type SpreadScalpingStrategy struct {
-	userID        string
-	symbol        string
-	manager       *StrategyManager
-	minSpread     decimal.Decimal // Минимальный спред для размещения ордера
-	minProfit     decimal.Decimal // Минимальная прибыль для продажи (в USDT)
-	quantity      string          // Фиксированный объем ордера
-	isBuying      bool            // Состояние: true - покупка, false - продажа
-	buyPrice      decimal.Decimal // Цена покупки для расчета прибыли
-	buyQty        decimal.Decimal // Объем покупки
-	activeOrderID string          // ID активного ордера
-	baseCoin      string          // Базовая монета (например, BTC для BTCUSDT)
+	userID         string
+	symbol         string
+	manager        *StrategyManager
+	minSpread      decimal.Decimal // Минимальный спред
+	minProfit      decimal.Decimal // Минимальная прибыль
+	quantity       decimal.Decimal // Объем ордера
+	isBuying       bool            // Состояние: true - покупка, false - продажа
+	buyPrice       decimal.Decimal // Цена покупки
+	buyQty         decimal.Decimal // Объем покупки
+	activeOrderID  string          // ID активного ордера
+	baseCoin       string          // Базовая монета (например, BTC)
+	instrumentRepo types.BybitInstrumentRepositoryInterface // Репозиторий
 }
 
-// NewSpreadScalpingStrategy создает новую стратегию спред-скальпинга
-func NewSpreadScalpingStrategy(userID, symbol string, manager *StrategyManager, minSpread, minProfit decimal.Decimal, quantity string) *SpreadScalpingStrategy {
-	// Извлекаем базовую монету из символа (например, BTC из BTCUSDT)
-	baseCoin := symbol[:len(symbol)-4] // Предполагаем, что котировочная монета - USDT
+// NewSpreadScalpingStrategy создает новую стратегию
+func NewSpreadScalpingStrategy(
+	userID, symbol string,
+	manager *StrategyManager,
+	instrumentRepo types.BybitInstrumentRepositoryInterface,
+) *SpreadScalpingStrategy {
+	baseCoin := symbol[:len(symbol)-4] // Например, BTC из BTCUSDT
 	return &SpreadScalpingStrategy{
-		userID:    userID,
-		symbol:    symbol,
-		manager:   manager,
-		minSpread: minSpread,
-		minProfit: minProfit,
-		quantity:  quantity,
-		isBuying:  true,
-		baseCoin:  baseCoin,
+		userID:         userID,
+		symbol:         symbol,
+		manager:        manager,
+		minSpread:      decimal.NewFromFloat(1), // Начальное значение, обновится
+		minProfit:      decimal.NewFromFloat(0.1), // Начальное значение
+		quantity:       decimal.NewFromFloat(0.001), // Начальное значение
+		isBuying:       true,
+		baseCoin:       baseCoin,
+		instrumentRepo: instrumentRepo,
 	}
+}
+
+// updateParameters обновляет параметры стратегии
+func (s *SpreadScalpingStrategy) updateParameters(ctx context.Context) error {
+	// Получаем данные инструмента
+	instrument, err := s.instrumentRepo.GetBySymbol(ctx, s.symbol)
+	if err != nil {
+		return fmt.Errorf("failed to get instrument: %w", err)
+	}
+
+	// Получаем тикер для средней цены
+	ticker, err := storages.GetTicker(ctx, s.symbol)
+	if err != nil {
+		return fmt.Errorf("failed to get ticker: %w", err)
+	}
+	lastPrice, _ := decimal.NewFromString(ticker.LastPrice)
+
+	// Рассчитываем minSpread (0.05% от цены)
+	s.minSpread = lastPrice.Mul(decimal.NewFromFloat(0.0005))
+
+	// Рассчитываем minProfit (комиссии + маржа)
+	feeRate := decimal.NewFromFloat(0.002) // 0.2% (0.1% покупка + 0.1% продажа)
+	tradeValue := lastPrice.Mul(s.quantity)
+	fees := tradeValue.Mul(feeRate)
+	s.minProfit = fees.Add(decimal.NewFromFloat(0.1)) // Комиссии + 0.1 USDT
+
+	// Рассчитываем quantity (10% баланса USDT, минимум minOrderQty)
+	wallet, err := s.manager.GetWalletBalance(ctx, s.userID)
+	if err != nil {
+		return fmt.Errorf("failed to get wallet: %w", err)
+	}
+	var usdtBalance decimal.Decimal
+	if len(wallet.List) > 0 {
+		for _, coin := range wallet.List[0].Coins {
+			if coin.Coin == "USDT" {
+				usdtBalance, _ = decimal.NewFromString(coin.WalletBalance)
+				break
+			}
+		}
+	}
+	targetValue := usdtBalance.Mul(decimal.NewFromFloat(0.1)) // 10% баланса
+	quantity := targetValue.Div(lastPrice)                    // В BTC
+
+	// Получаем минимальный размер ордера и точность
+	minOrderQty := instrument.MinOrderQty
+	if quantity.LessThan(minOrderQty) {
+		quantity = minOrderQty
+	}
+
+	// Округляем до точности базовой монеты
+	quantity = quantity.Round(int32(instrument.BasePrecision.IntPart()))
+	s.quantity = quantity
+
+	logger.LogInfo("SpreadScalping [%s] обновлены параметры: minSpread=%s, minProfit=%s, quantity=%s",
+		s.userID, s.minSpread.String(), s.minProfit.String(), s.quantity.String())
+	return nil
 }
 
 func (s *SpreadScalpingStrategy) OnTicker(ctx context.Context, ticker bybit.TickerMessage) {
@@ -97,7 +161,8 @@ func (s *SpreadScalpingStrategy) OnOrderBook(ctx context.Context, orderBook bybi
 			bidPrice, _ := decimal.NewFromString(orderBook.Bids[0][0])
 			buyPrice := bidPrice.Add(decimal.NewFromFloat(0.01))
 			priceStr := buyPrice.String()
-			order, err := s.manager.CreateOrder(ctx, s.userID, s.symbol, "Buy", "Limit", s.quantity, &priceStr)
+			quantityStr := s.quantity.String()
+			order, err := s.manager.CreateOrder(ctx, s.userID, s.symbol, "Buy", "Limit", quantityStr, &priceStr)
 			if err != nil {
 				logger.LogError("SpreadScalping [%s] ошибка создания ордера на покупку: %v", s.userID, err)
 			} else {
@@ -116,7 +181,7 @@ func (s *SpreadScalpingStrategy) OnOrderBook(ctx context.Context, orderBook bybi
 				}
 			}
 		}
-		if freeBalance.LessThan(decimal.RequireFromString(s.quantity)) {
+		if freeBalance.LessThan(s.quantity) {
 			logger.LogInfo("SpreadScalping [%s] недостаточный баланс %s: %s", s.userID, s.baseCoin, freeBalance.String())
 			return
 		}
@@ -141,7 +206,8 @@ func (s *SpreadScalpingStrategy) OnOrderBook(ctx context.Context, orderBook bybi
 				return
 			}
 			priceStr := sellPrice.String()
-			order, err := s.manager.CreateOrder(ctx, s.userID, s.symbol, "Sell", "Limit", s.quantity, &priceStr)
+			quantityStr := s.quantity.String()
+			order, err := s.manager.CreateOrder(ctx, s.userID, s.symbol, "Sell", "Limit", quantityStr, &priceStr)
 			if err != nil {
 				logger.LogError("SpreadScalping [%s] ошибка создания ордера на продажу: %v", s.userID, err)
 			} else {
@@ -192,6 +258,34 @@ func (s *SpreadScalpingStrategy) OnWallet(ctx context.Context, wallet bybit.Wall
 
 func (s *SpreadScalpingStrategy) Start(ctx context.Context) {
 	logger.LogInfo("SpreadScalping [%s] запущена для %s", s.userID, s.symbol)
+	
+	// Создаем новый контекст для инициализации параметров
+	initCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	// Обновляем параметры при старте
+	if err := s.updateParameters(initCtx); err != nil {
+		logger.LogError("SpreadScalping [%s] ошибка инициализации параметров: %v", s.userID, err)
+	}
+
+	// Периодическое обновление параметров
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// Создаем новый контекст для каждого обновления
+				updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				if err := s.updateParameters(updateCtx); err != nil {
+					logger.LogError("SpreadScalping [%s] ошибка обновления параметров: %v", s.userID, err)
+				}
+				cancel()
+			}
+		}
+	}()
 }
 
 func (s *SpreadScalpingStrategy) Stop(ctx context.Context) {

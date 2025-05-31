@@ -72,7 +72,11 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 
 	// Создаем сервисы, зависящие от менеджера стратегий
 	userInstrumentService := services.NewUserInstrumentService(userInstrumentRepo, bybitInstrumentRepo, strategyManager)
-	userStrategyService := services.NewUserStrategyService(userStrategyRepo, strategyManager)
+	userStrategyService := services.NewUserStrategyService(
+		userStrategyRepo,
+		strategyManager,
+		repositories.NewBybitInstrumentRepository(db),
+	)
 
 	// Создаем сервис Bybit
 	bybitService := services.NewBybitService(bybitClient, db, userService, wsHandler)
