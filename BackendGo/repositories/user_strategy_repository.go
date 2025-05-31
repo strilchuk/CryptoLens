@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -159,4 +160,13 @@ func (r *UserStrategyRepository) GetByID(ctx context.Context, id string) (*model
 	}
 
 	return &strategy, nil
+}
+
+func (r *UserStrategyRepository) DeactivateAllStrategies(ctx context.Context) error {
+	query := `UPDATE user_strategies SET is_active = false`
+	_, err := r.db.ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("ошибка при деактивации всех стратегий: %w", err)
+	}
+	return nil
 }

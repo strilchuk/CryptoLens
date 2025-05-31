@@ -126,9 +126,14 @@ func (c *Container) RegisterRoutes() {
 }
 
 func (c *Container) StartBackgroundTasks(ctx context.Context) {
-	// Загружаем активные стратегии
-	if err := c.UserStrategyService.LoadActiveStrategies(ctx); err != nil {
-		logger.LogError("Ошибка при загрузке активных стратегий: %v", err)
+	//// Загружаем активные стратегии
+	//if err := c.UserStrategyService.LoadActiveStrategies(ctx); err != nil {
+	//	logger.LogError("Ошибка при загрузке активных стратегий: %v", err)
+	//}
+
+	// Деактивируем все стратегии
+	if err := c.UserStrategyService.DeactivateAllStrategies(ctx); err != nil {
+		logger.LogError("Ошибка при деактивации активных стратегий: %v", err)
 	}
 
 	// Запускаем обновление инструментов

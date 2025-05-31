@@ -76,6 +76,7 @@ func (s *SpreadScalpingStrategy) updateParameters(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get wallet: %w", err)
 	}
+
 	var usdtBalance decimal.Decimal
 	if len(wallet.List) > 0 {
 		for _, coin := range wallet.List[0].Coins {
@@ -85,21 +86,48 @@ func (s *SpreadScalpingStrategy) updateParameters(ctx context.Context) error {
 			}
 		}
 	}
+
+	// Рассчитываем количество BTC, которое можно купить на 10% от баланса USDT
 	targetValue := usdtBalance.Mul(decimal.NewFromFloat(0.1)) // 10% баланса
 	quantity := targetValue.Div(lastPrice)                    // В BTC
 
-	// Получаем минимальный размер ордера и точность
-	minOrderQty := instrument.MinOrderQty
-	if quantity.LessThan(minOrderQty) {
-		quantity = minOrderQty
+	// Проверяем минимальный размер ордера
+	if quantity.LessThan(instrument.MinOrderQty) {
+		quantity = instrument.MinOrderQty
+	}
+
+	// Проверяем максимальный размер ордера
+	if quantity.GreaterThan(instrument.MaxOrderQty) {
+		quantity = instrument.MaxOrderQty
+	}
+
+	// Проверяем минимальную стоимость ордера
+	minOrderAmt := lastPrice.Mul(quantity)
+	if minOrderAmt.LessThan(instrument.MinOrderAmt) {
+		// Если стоимость меньше минимальной, увеличиваем количество
+		quantity = instrument.MinOrderAmt.Div(lastPrice)
+	}
+
+	// Проверяем максимальную стоимость ордера
+	maxOrderAmt := lastPrice.Mul(quantity)
+	if maxOrderAmt.GreaterThan(instrument.MaxOrderAmt) {
+		// Если стоимость больше максимальной, уменьшаем количество
+		quantity = instrument.MaxOrderAmt.Div(lastPrice)
 	}
 
 	// Округляем до точности базовой монеты
 	quantity = quantity.Round(int32(instrument.BasePrecision.IntPart()))
 	s.quantity = quantity
 
-	logger.LogInfo("SpreadScalping [%s] обновлены параметры: minSpread=%s, minProfit=%s, quantity=%s",
-		s.userID, s.minSpread.String(), s.minProfit.String(), s.quantity.String())
+	logger.LogInfo("SpreadScalping [%s] обновлены параметры: minSpread=%s (%.4f%%), minProfit=%s, quantity=%s (%.4f BTC), lastPrice=%s, orderValue=%s USDT",
+		s.userID, 
+		s.minSpread.String(), 
+		s.minSpread.Div(lastPrice).Mul(decimal.NewFromInt(100)).InexactFloat64(),
+		s.minProfit.String(), 
+		s.quantity.String(),
+		s.quantity.InexactFloat64(),
+		lastPrice.String(),
+		lastPrice.Mul(quantity).String())
 	return nil
 }
 

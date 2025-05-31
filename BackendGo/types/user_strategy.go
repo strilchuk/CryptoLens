@@ -12,4 +12,5 @@ type UserStrategyServiceInterface interface {
 	RemoveStrategy(ctx context.Context, id string) error
 	GetActiveStrategies(ctx context.Context) ([]models.UserStrategy, error)
 	LoadActiveStrategies(ctx context.Context) error
+	DeactivateAllStrategies(ctx context.Context) error
 }

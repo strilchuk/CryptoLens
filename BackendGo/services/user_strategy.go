@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 type UserStrategyService struct {
@@ -106,6 +107,15 @@ func (s *UserStrategyService) UpdateStrategyStatus(ctx context.Context, id strin
 			testStrategy := trading.NewTestStrategy(strategy.UserID)
 			s.strategyManager.AddStrategy(strategy.UserID, testStrategy)
 			go testStrategy.Start(ctx)
+		case "spread_scalping":
+			spreadStrategy := trading.NewSpreadScalpingStrategy(
+				strategy.UserID,       // userID
+				"BTCUSDT",             // symbol
+				s.strategyManager,     // manager
+				s.bybitInstrumentRepo, // instrumentRepo
+			)
+			s.strategyManager.AddStrategy(strategy.UserID, spreadStrategy)
+			go spreadStrategy.Start(ctx)
 		default:
 			logger.LogError("Неизвестная стратегия при активации: %s", strategy.StrategyName)
 		}
@@ -123,6 +133,10 @@ func (s *UserStrategyService) UpdateStrategyStatus(ctx context.Context, id strin
 			return fmt.Errorf("ошибка при получении активных стратегий: %w", err)
 		}
 
+		// Создаем новый контекст для пересоздания стратегий
+		recreateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
 		// Создаем и добавляем активные стратегии
 		for _, st := range activeStrategies {
 			if st.IsActive {
@@ -130,7 +144,7 @@ func (s *UserStrategyService) UpdateStrategyStatus(ctx context.Context, id strin
 				case "test":
 					testStrategy := trading.NewTestStrategy(st.UserID)
 					s.strategyManager.AddStrategy(st.UserID, testStrategy)
-					go testStrategy.Start(ctx)
+					go testStrategy.Start(recreateCtx)
 				case "spread_scalping":
 					spreadStrategy := trading.NewSpreadScalpingStrategy(
 						strategy.UserID,       // userID
@@ -139,7 +153,7 @@ func (s *UserStrategyService) UpdateStrategyStatus(ctx context.Context, id strin
 						s.bybitInstrumentRepo, // instrumentRepo
 					)
 					s.strategyManager.AddStrategy(strategy.UserID, spreadStrategy)
-					go spreadStrategy.Start(ctx)
+					go spreadStrategy.Start(recreateCtx)
 				}
 			}
 		}
@@ -200,6 +214,10 @@ func (s *UserStrategyService) RemoveStrategy(ctx context.Context, id string) err
 
 func (s *UserStrategyService) GetActiveStrategies(ctx context.Context) ([]models.UserStrategy, error) {
 	return s.userStrategyRepo.GetActiveStrategies(ctx)
+}
+
+func (s *UserStrategyService) DeactivateAllStrategies(ctx context.Context) error {
+	return s.userStrategyRepo.DeactivateAllStrategies(ctx)
 }
 
 func (s *UserStrategyService) LoadActiveStrategies(ctx context.Context) error {
