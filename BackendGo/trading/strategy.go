@@ -271,3 +271,20 @@ func (m *StrategyManager) GetPrivateExecution(ctx context.Context, userID, execI
 func (m *StrategyManager) GetPrivateWallet(ctx context.Context, userID string) (*bybit.WalletMessage, error) {
 	return storages.GetPrivateWallet(ctx, userID)
 }
+
+// GetWalletBalance получает баланс кошелька через API
+func (m *StrategyManager) GetWalletBalance(ctx context.Context, userID string) (*bybit.BybitWalletBalance, error) {
+	// Получаем аккаунт Bybit пользователя
+	account, err := m.getBybitAccount(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Bybit account: %w", err)
+	}
+
+	// Получаем баланс через клиент Bybit
+	balance, err := m.bybitClient.GetWalletBalance(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get wallet balance: %w", err)
+	}
+
+	return balance, nil
+}

@@ -47,23 +47,23 @@ type TickerMessage struct {
 
 // OrderBookMessage представляет сообщение книги ордеров
 type OrderBookMessage struct {
-	Symbol string      `json:"s"`
-	Bids   [][2]string `json:"b"`
-	Asks   [][2]string `json:"a"`
-	UpdateID int64     `json:"u"`
-	Seq     int64      `json:"seq"`
+	Symbol   string      `json:"s"`
+	Bids     [][2]string `json:"b"`
+	Asks     [][2]string `json:"a"`
+	UpdateID int64       `json:"u"`
+	Seq      int64       `json:"seq"`
 }
 
 // TradeMessage представляет сообщение о сделке
 type TradeMessage struct {
-	ID        string `json:"i"`
-	Timestamp int64  `json:"T"`
-	Price     string `json:"p"`
-	Volume    string `json:"v"`
-	Side      string `json:"S"`
-	Symbol    string `json:"s"`
-	IsBlockTrade bool `json:"BT"`
-	IsRPI      bool   `json:"RPI"`
+	ID           string `json:"i"`
+	Timestamp    int64  `json:"T"`
+	Price        string `json:"p"`
+	Volume       string `json:"v"`
+	Side         string `json:"S"`
+	Symbol       string `json:"s"`
+	IsBlockTrade bool   `json:"BT"`
+	IsRPI        bool   `json:"RPI"`
 }
 
 // OrderMessage представляет сообщение об ордере
@@ -247,7 +247,7 @@ func (c *WebSocketClient) StartMessageHandler(ctx context.Context, handler func(
 					continue
 				}
 
-				logger.LogInfo("Received WebSocket message: %s", string(msg))
+				//logger.LogInfo("Received WebSocket message: %s", string(msg))
 				var message WebSocketMessage
 				if err := json.Unmarshal(msg, &message); err != nil {
 					logger.LogError("Failed to parse WebSocket message: %v", err)

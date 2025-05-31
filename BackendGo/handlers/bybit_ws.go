@@ -27,7 +27,7 @@ func NewBybitWebSocketHandler(strategyManager types.StrategyManagerInterface, tr
 
 // HandleMessage обрабатывает входящие WebSocket сообщения
 func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.WebSocketMessage) {
-	logger.LogDebug("WebSocket сообщение: Topic=%s, Data=%s", msg.Topic, string(msg.Data))
+	//logger.LogDebug("WebSocket сообщение: Topic=%s, Data=%s", msg.Topic, string(msg.Data))
 
 	if msg.Topic == "" {
 		var subResponse struct {
@@ -118,22 +118,22 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 
 // handleTickerMessage обрабатывает сообщения тикера
 func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg bybit.TickerMessage) {
-	logger.LogInfo("Тикер %s: цена=%s, объем=%s",
-		msg.Symbol, msg.LastPrice, msg.Volume24h)
+	//logger.LogInfo("Тикер %s: цена=%s, объем=%s",
+	//	msg.Symbol, msg.LastPrice, msg.Volume24h)
 	// Здесь можно добавить дополнительную логику обработки тикера
 }
 
 // handleOrderBookMessage обрабатывает сообщения книги ордеров
 func (h *BybitWebSocketHandler) handleOrderBookMessage(ctx context.Context, msg bybit.OrderBookMessage) {
-	logger.LogInfo("Книга ордеров %s: %d бидов, %d асков",
-		msg.Symbol, len(msg.Bids), len(msg.Asks))
+	//logger.LogInfo("Книга ордеров %s: %d бидов, %d асков",
+	//	msg.Symbol, len(msg.Bids), len(msg.Asks))
 	// Здесь можно добавить дополнительную логику обработки книги ордеров
 }
 
 // handleTradeMessage обрабатывает сообщения о сделках
 func (h *BybitWebSocketHandler) handleTradeMessage(ctx context.Context, msg bybit.TradeMessage) {
-	logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
-		msg.Symbol, msg.Price, msg.Volume, msg.Side)
+	//logger.LogInfo("Сделка %s: цена=%s, объем=%s, сторона=%s",
+	//	msg.Symbol, msg.Price, msg.Volume, msg.Side)
 	// Здесь можно добавить дополнительную логику обработки сделок
 }
 
@@ -157,7 +157,7 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 		}
 
 	case "execution.spot":
-	//case "execution.fast.spot":
+		//case "execution.fast.spot":
 		var executions []bybit.ExecutionMessage
 		if err := json.Unmarshal(msg.Data, &executions); err != nil {
 			logger.LogError("Ошибка разбора сообщения исполнения: %v", err)
@@ -175,11 +175,16 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 		}
 
 	case "wallet":
-		var wallet bybit.WalletMessage
-		if err := json.Unmarshal(msg.Data, &wallet); err != nil {
+		var wallets []bybit.WalletMessage
+		if err := json.Unmarshal(msg.Data, &wallets); err != nil {
 			logger.LogError("Ошибка разбора сообщения кошелька: %v", err)
 			return
 		}
+		if len(wallets) == 0 {
+			logger.LogError("Получен пустой массив сообщений о кошельке")
+			return
+		}
+		wallet := wallets[0] // Берем первое сообщение
 		if err := storages.SavePrivateWallet(ctx, userID, wallet); err != nil {
 			logger.LogError("Ошибка сохранения кошелька: %v", err)
 		}

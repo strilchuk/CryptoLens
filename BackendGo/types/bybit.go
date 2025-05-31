@@ -57,6 +57,7 @@ type StrategyManagerInterface interface {
 	GetPrivateOrder(ctx context.Context, userID, orderID string) (*bybit.OrderMessage, error)
 	GetPrivateExecution(ctx context.Context, userID, execID string) (*bybit.ExecutionMessage, error)
 	GetPrivateWallet(ctx context.Context, userID string) (*bybit.WalletMessage, error)
+	GetWalletBalance(ctx context.Context, userID string) (*bybit.BybitWalletBalance, error)
 }
 
 // BybitAccountRepositoryInterface определяет методы для работы с аккаунтами Bybit

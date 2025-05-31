@@ -53,16 +53,18 @@ func (s *SpreadScalpingStrategy) OnOrderBook(ctx context.Context, orderBook bybi
 	}
 
 	// Проверяем баланс
-	wallet, err := storages.GetPrivateWallet(ctx, s.userID)
+	balance, err := s.manager.GetWalletBalance(ctx, s.userID)
 	if err != nil {
-		logger.LogError("SpreadScalping [%s] ошибка получения кошелька: %v", s.userID, err)
+		logger.LogError("SpreadScalping [%s] ошибка получения баланса: %v", s.userID, err)
 		return
 	}
 	var freeBalance decimal.Decimal
-	for _, coin := range wallet.Coin {
-		if coin.Coin == "USDT" {
-			freeBalance, _ = decimal.NewFromString(coin.Free)
-			break
+	if len(balance.List) > 0 {
+		for _, coin := range balance.List[0].Coins {
+			if coin.Coin == "USDT" {
+				freeBalance, _ = decimal.NewFromString(coin.WalletBalance)
+				break
+			}
 		}
 	}
 	if freeBalance.LessThan(decimal.NewFromFloat(10)) { // Минимальный баланс 10 USDT
