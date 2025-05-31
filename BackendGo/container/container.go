@@ -37,6 +37,7 @@ type Container struct {
 	UserStrategyService   types.UserStrategyServiceInterface
 	UserStrategyHandler   *handlers.UserStrategyHandler
 	UserStrategyRoutes    *routes.UserStrategyRoutes
+	TradeLogRepo          types.TradeLogRepositoryInterface
 	WebSocketHandler      types.BybitWebSocketHandlerInterface
 }
 
@@ -47,6 +48,7 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 	bybitInstrumentRepo := repositories.NewBybitInstrumentRepository(db)
 	userStrategyRepo := repositories.NewUserStrategyRepository(db)
 	bybitAccountRepo := repositories.NewBybitAccountRepository(db)
+	tradeLogRepo := repositories.NewTradeLogRepository(db)
 
 	// Инициализация клиента Bybit
 	recvWindow, _ := strconv.Atoi(env.GetBybitRecvWindow())
@@ -66,7 +68,7 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 	strategyManager := trading.NewStrategyManager(bybitClient, userInstrumentRepo, bybitAccountRepo)
 
 	// Создаем обработчик WebSocket
-	wsHandler := handlers.NewBybitWebSocketHandler(strategyManager)
+	wsHandler := handlers.NewBybitWebSocketHandler(strategyManager, tradeLogRepo)
 
 	// Создаем сервисы, зависящие от менеджера стратегий
 	userInstrumentService := services.NewUserInstrumentService(userInstrumentRepo, bybitInstrumentRepo, strategyManager)
@@ -107,6 +109,7 @@ func NewContainer(db *sql.DB, jwtKey []byte) *Container {
 		UserStrategyService:   userStrategyService,
 		UserStrategyHandler:   userStrategyHandler,
 		UserStrategyRoutes:    userStrategyRoutes,
+		TradeLogRepo:          tradeLogRepo,
 		WebSocketHandler:      wsHandler,
 	}
 }

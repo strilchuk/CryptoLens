@@ -95,6 +95,9 @@ type ExecutionMessage struct {
 	ExecPrice   string `json:"execPrice"`
 	ExecQty     string `json:"execQty"`
 	ExecFee     string `json:"execFee"`
+	FeeRate     string `json:"feeRate"`
+	IsMaker     bool   `json:"isMaker"`
+	OrderType   string `json:"orderType"`
 	ExecTime    string `json:"execTime"`
 	Category    string `json:"category"`
 }

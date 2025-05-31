@@ -10,19 +10,22 @@ import (
 
 // SpreadScalpingStrategy реализует стратегию спред-скальпинга
 type SpreadScalpingStrategy struct {
-	userID      string
-	symbol      string
-	bybitClient bybit.Client
-	minSpread   decimal.Decimal // Минимальный спред для размещения ордера
-	quantity    string          // Фиксированный объем ордера
+	userID        string
+	symbol        string
+	bybitClient   bybit.Client
+	manager       *StrategyManager
+	minSpread     decimal.Decimal // Минимальный спред для размещения ордера
+	quantity      string          // Фиксированный объем ордера
+	activeOrderID string
 }
 
 // NewSpreadScalpingStrategy создает новую стратегию спред-скальпинга
-func NewSpreadScalpingStrategy(userID, symbol string, client bybit.Client, minSpread decimal.Decimal, quantity string) *SpreadScalpingStrategy {
+func NewSpreadScalpingStrategy(userID, symbol string, client bybit.Client, manager *StrategyManager, minSpread decimal.Decimal, quantity string) *SpreadScalpingStrategy {
 	return &SpreadScalpingStrategy{
 		userID:      userID,
 		symbol:      symbol,
 		bybitClient: client,
+		manager:     manager,
 		minSpread:   minSpread,
 		quantity:    quantity,
 	}
@@ -67,16 +70,27 @@ func (s *SpreadScalpingStrategy) OnOrderBook(ctx context.Context, orderBook bybi
 		return
 	}
 
-	// Размещаем лимитный ордер на покупку чуть выше лучшего бида
+	// Отменяем существующий ордер, если есть
+	if s.activeOrderID != "" {
+		if err := s.manager.CancelOrder(ctx, s.userID, s.symbol, s.activeOrderID); err != nil {
+			logger.LogError("SpreadScalping [%s] ошибка отмены ордера %s: %v", s.userID, s.activeOrderID, err)
+		} else {
+			logger.LogInfo("SpreadScalping [%s] отменен ордер: %s", s.userID, s.activeOrderID)
+			s.activeOrderID = ""
+		}
+	}
+
+	// Размещаем новый лимитный ордер на покупку чуть выше лучшего бида
 	if len(orderBook.Bids) > 0 {
 		bidPrice, _ := decimal.NewFromString(orderBook.Bids[0][0])
-		buyPrice := bidPrice.Add(decimal.NewFromFloat(0.01)) // На 0.01 выше бида
-		buyPriceStr := buyPrice.String()
-		_, err = s.bybitClient.CreateOrder(ctx, &bybit.BybitAccount{UserID: s.userID}, s.symbol, "Buy", "Limit", s.quantity, &buyPriceStr, "GTC", nil)
+		buyPrice := bidPrice.Add(decimal.NewFromFloat(0.01))
+		priceStr := buyPrice.String()
+		order, err := s.manager.CreateOrder(ctx, s.userID, s.symbol, "Buy", "Limit", s.quantity, &priceStr)
 		if err != nil {
 			logger.LogError("SpreadScalping [%s] ошибка создания ордера на покупку: %v", s.userID, err)
 		} else {
-			logger.LogInfo("SpreadScalping [%s] создан ордер на покупку: %s по цене %s", s.userID, s.symbol, buyPriceStr)
+			s.activeOrderID = order.OrderID
+			logger.LogInfo("SpreadScalping [%s] создан ордер на покупку: %s по цене %s, ID: %s", s.userID, s.symbol, priceStr, order.OrderID)
 		}
 	}
 }
@@ -87,6 +101,9 @@ func (s *SpreadScalpingStrategy) OnTrade(ctx context.Context, trade bybit.TradeM
 
 func (s *SpreadScalpingStrategy) OnOrder(ctx context.Context, order bybit.OrderMessage) {
 	logger.LogInfo("SpreadScalping [%s] обновление ордера: %s, статус: %s", s.userID, order.OrderID, order.OrderStatus)
+	if order.OrderID == s.activeOrderID && (order.OrderStatus == "Filled" || order.OrderStatus == "Cancelled") {
+		s.activeOrderID = ""
+	}
 }
 
 func (s *SpreadScalpingStrategy) OnExecution(ctx context.Context, execution bybit.ExecutionMessage) {
@@ -102,5 +119,11 @@ func (s *SpreadScalpingStrategy) Start(ctx context.Context) {
 }
 
 func (s *SpreadScalpingStrategy) Stop(ctx context.Context) {
+	if s.activeOrderID != "" {
+		if err := s.manager.CancelOrder(ctx, s.userID, s.symbol, s.activeOrderID); err != nil {
+			logger.LogError("SpreadScalping [%s] ошибка отмены ордера %s при остановке: %v", s.userID, s.activeOrderID, err)
+		}
+		s.activeOrderID = ""
+	}
 	logger.LogInfo("SpreadScalping [%s] остановлена", s.userID)
 }

@@ -14,12 +14,14 @@ import (
 // BybitWebSocketHandler обрабатывает WebSocket сообщения от Bybit
 type BybitWebSocketHandler struct {
 	strategyManager types.StrategyManagerInterface
+	tradeLogRepo    types.TradeLogRepositoryInterface
 }
 
 // NewBybitWebSocketHandler создает новый обработчик WebSocket сообщений
-func NewBybitWebSocketHandler(strategyManager types.StrategyManagerInterface) *BybitWebSocketHandler {
+func NewBybitWebSocketHandler(strategyManager types.StrategyManagerInterface, tradeLogRepo types.TradeLogRepositoryInterface) *BybitWebSocketHandler {
 	return &BybitWebSocketHandler{
 		strategyManager: strategyManager,
+		tradeLogRepo:    tradeLogRepo,
 	}
 }
 
@@ -155,7 +157,7 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 		}
 
 	case "execution.spot":
-		//case "execution.fast.spot":
+	//case "execution.fast.spot":
 		var executions []bybit.ExecutionMessage
 		if err := json.Unmarshal(msg.Data, &executions); err != nil {
 			logger.LogError("Ошибка разбора сообщения исполнения: %v", err)
@@ -164,6 +166,9 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 		for _, exec := range executions {
 			if err := storages.SavePrivateExecution(ctx, userID, exec.ExecID, exec); err != nil {
 				logger.LogError("Ошибка сохранения исполнения: %v", err)
+			}
+			if err := h.tradeLogRepo.SaveExecution(ctx, userID, exec); err != nil {
+				logger.LogError("Ошибка сохранения исполнения в trade_logs: %v", err)
 			}
 			logger.LogInfo("Исполнение: UserID=%s, Symbol=%s, ExecID=%s, Price=%s, Qty=%s",
 				userID, exec.Symbol, exec.ExecID, exec.ExecPrice, exec.ExecQty)
