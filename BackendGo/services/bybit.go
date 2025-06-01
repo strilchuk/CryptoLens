@@ -33,7 +33,12 @@ type BybitService struct {
 	wsMutex             sync.Mutex
 }
 
-func NewBybitService(bybitClient bybit.Client, db *sql.DB, userService *UserService, wsHandler types.BybitWebSocketHandlerInterface) *BybitService {
+func NewBybitService(
+	bybitClient bybit.Client,
+	db *sql.DB,
+	userService *UserService,
+	wsHandler types.BybitWebSocketHandlerInterface,
+) *BybitService {
 	recvWindow, _ := strconv.Atoi(env.GetBybitRecvWindow())
 	apiMode := env.GetBybitApiMode()
 	wsURL := env.GetBybitWsUrl() + "/v5/public/spot"
