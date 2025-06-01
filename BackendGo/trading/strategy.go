@@ -2,6 +2,7 @@ package trading
 
 import (
 	"CryptoLens_Backend/integration/bybit"
+	"CryptoLens_Backend/logger"
 	"CryptoLens_Backend/storages"
 	"CryptoLens_Backend/types"
 	"context"
@@ -74,6 +75,15 @@ func (m *StrategyManager) AddStrategy(userID string, strategy types.Strategy) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	m.strategies[userID] = append(m.strategies[userID], strategy)
+
+	// Обновляем список активных инструментов
+	ctx := context.Background()
+	symbols, err := m.userInstrumentRepo.GetActiveInstrumentsByUserID(ctx, userID)
+	if err != nil {
+		logger.LogError("Failed to get active instruments for user %s: %v", userID, err)
+		return
+	}
+	m.userInstruments[userID] = symbols
 }
 
 // RemoveStrategy удаляет стратегию для пользователя

@@ -18,7 +18,10 @@ type BybitWebSocketHandler struct {
 }
 
 // NewBybitWebSocketHandler создает новый обработчик WebSocket сообщений
-func NewBybitWebSocketHandler(strategyManager types.StrategyManagerInterface, tradeLogRepo types.TradeLogRepositoryInterface) *BybitWebSocketHandler {
+func NewBybitWebSocketHandler(
+	strategyManager types.StrategyManagerInterface,
+	tradeLogRepo types.TradeLogRepositoryInterface,
+) *BybitWebSocketHandler {
 	return &BybitWebSocketHandler{
 		strategyManager: strategyManager,
 		tradeLogRepo:    tradeLogRepo,
@@ -125,8 +128,8 @@ func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg byb
 
 // handleOrderBookMessage обрабатывает сообщения книги ордеров
 func (h *BybitWebSocketHandler) handleOrderBookMessage(ctx context.Context, msg bybit.OrderBookMessage) {
-	//logger.LogInfo("Книга ордеров %s: %d бидов, %d асков",
-	//	msg.Symbol, len(msg.Bids), len(msg.Asks))
+	logger.LogInfo("Книга ордеров %s: %d бидов, %d асков",
+		msg.Symbol, len(msg.Bids), len(msg.Asks))
 	// Здесь можно добавить дополнительную логику обработки книги ордеров
 }
 

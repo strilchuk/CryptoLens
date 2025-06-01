@@ -6,6 +6,7 @@ import (
 	"CryptoLens_Backend/storages"
 	"CryptoLens_Backend/types"
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/shopspring/decimal"
 	"strings"
@@ -157,6 +158,7 @@ func (s *SpreadScalpingStrategy) OnTicker(ctx context.Context, ticker bybit.Tick
 }
 
 func (s *SpreadScalpingStrategy) OnOrderBook(ctx context.Context, orderBook bybit.OrderBookMessage) {
+	logger.LogError("SpreadScalping [%s] DEBUG316 %v:%v", s.userID, orderBook.Symbol, s.symbol)
 	if orderBook.Symbol != s.symbol {
 		return
 	}
@@ -215,6 +217,9 @@ func (s *SpreadScalpingStrategy) OnOrderBook(ctx context.Context, orderBook bybi
 				s.activeOrderID = order.OrderID
 				logger.LogInfo("SpreadScalping [%s] создан ордер на покупку: %s по цене %s, ID: %s", s.userID, s.symbol, priceStr, order.OrderID)
 			}
+		} else {
+			orderBookJSON, _ := json.MarshalIndent(orderBook, "", "  ")
+			logger.LogError("SpreadScalping [%s] Книга ордеров пуста: %s", s.userID, string(orderBookJSON))
 		}
 	} else {
 		// Проверяем баланс базовой монеты для продажи

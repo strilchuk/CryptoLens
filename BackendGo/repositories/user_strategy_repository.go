@@ -20,7 +20,7 @@ func NewUserStrategyRepository(db *sql.DB) *UserStrategyRepository {
 func (r *UserStrategyRepository) Create(ctx context.Context, userID string, strategyName string) (*models.UserStrategy, error) {
 	query := `
 		INSERT INTO user_strategies (user_id, strategy_name, is_active)
-		VALUES ($1, $2, true)
+		VALUES ($1, $2, false)
 		RETURNING id, user_id, strategy_name, is_active, created_at, updated_at`
 
 	var strategy models.UserStrategy
