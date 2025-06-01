@@ -15,6 +15,7 @@ import (
 type BybitWebSocketHandler struct {
 	strategyManager types.StrategyManagerInterface
 	tradeLogRepo    types.TradeLogRepositoryInterface
+	msgChan         chan *bybit.WebSocketMessage
 }
 
 // NewBybitWebSocketHandler создает новый обработчик WebSocket сообщений
@@ -22,15 +23,30 @@ func NewBybitWebSocketHandler(
 	strategyManager types.StrategyManagerInterface,
 	tradeLogRepo types.TradeLogRepositoryInterface,
 ) *BybitWebSocketHandler {
-	return &BybitWebSocketHandler{
+	handler := &BybitWebSocketHandler{
 		strategyManager: strategyManager,
 		tradeLogRepo:    tradeLogRepo,
+		msgChan:         make(chan *bybit.WebSocketMessage, 1000), // Буфер на 1000 сообщений
+	}
+
+	// Запускаем обработчик сообщений в горутине
+	go handler.processMessages()
+
+	return handler
+}
+
+// processMessages обрабатывает сообщения из канала
+func (h *BybitWebSocketHandler) processMessages() {
+	for msg := range h.msgChan {
+		ctx := context.Background()
+		h.processMessage(ctx, msg)
 	}
 }
 
-// HandleMessage обрабатывает входящие WebSocket сообщения
-func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.WebSocketMessage) {
-	//logger.LogDebug("WebSocket сообщение: Topic=%s, Data=%s", msg.Topic, string(msg.Data))
+// processMessage обрабатывает одно сообщение
+func (h *BybitWebSocketHandler) processMessage(ctx context.Context, msg *bybit.WebSocketMessage) {
+	logger.LogDebug("Начало обработки сообщения: Topic=%s, Data=%s", msg.Topic, string(msg.Data))
+	defer logger.LogDebug("Конец обработки сообщения: Topic=%s", msg.Topic)
 
 	if msg.Topic == "" {
 		var subResponse struct {
@@ -116,6 +132,17 @@ func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.Web
 
 	default:
 		logger.LogInfo("Неизвестный тип сообщения: %s", messageType)
+	}
+}
+
+// HandleMessage обрабатывает входящие WebSocket сообщения
+func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.WebSocketMessage) {
+	logger.LogDebug("Получено сообщение: Topic=%s", msg.Topic)
+	select {
+	case h.msgChan <- &msg: // Отправка в канал без блокировки
+		logger.LogDebug("Сообщение отправлено в канал: Topic=%s", msg.Topic)
+	default:
+		logger.LogWarn("Канал переполнен, сообщение отброшено: Topic=%s", msg.Topic)
 	}
 }
 

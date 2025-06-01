@@ -223,10 +223,12 @@ func (c *WebSocketClient) Subscribe(ctx context.Context, channels []string) erro
 
 // StartMessageHandler запускает обработку входящих сообщений
 func (c *WebSocketClient) StartMessageHandler(ctx context.Context, handler func(context.Context, WebSocketMessage)) {
+	messageChan := make(chan WebSocketMessage)
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
+				logger.LogInfo("WebSocket context canceled, attempting reconnect...")
 				c.Close()
 				return
 			default:
@@ -239,6 +241,7 @@ func (c *WebSocketClient) StartMessageHandler(ctx context.Context, handler func(
 					}
 				}
 
+				logger.LogDebug("Waiting for WebSocket message...")
 				_, msg, err := c.conn.ReadMessage()
 				if err != nil {
 					logger.LogError("Failed to read WebSocket message: %v", err)
@@ -247,20 +250,26 @@ func (c *WebSocketClient) StartMessageHandler(ctx context.Context, handler func(
 					continue
 				}
 
-				//logger.LogInfo("Received WebSocket message: %s", string(msg))
+				logger.LogDebug("Received raw WebSocket message: %s", string(msg))
 				var message WebSocketMessage
 				if err := json.Unmarshal(msg, &message); err != nil {
 					logger.LogError("Failed to parse WebSocket message: %v", err)
 					continue
 				}
 
-				// Пропускаем сообщения пинга
 				if message.Topic == "" && strings.Contains(string(msg), "pong") {
+					logger.LogDebug("Received pong message")
 					continue
 				}
 
-				handler(ctx, message)
+				messageChan <- message
 			}
+		}
+	}()
+
+	go func() {
+		for msg := range messageChan {
+			handler(ctx, msg)
 		}
 	}()
 }

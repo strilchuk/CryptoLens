@@ -287,7 +287,7 @@ func (s *BybitService) StartWebSocket(ctx context.Context) {
 				}
 
 				// Запускаем обработку сообщений
-				s.wsClient.StartMessageHandler(ctx, s.wsHandler.HandleMessage)
+				s.wsClient.StartMessageHandler(context.Background(), s.wsHandler.HandleMessage)
 
 				// Подписываемся на публичные каналы
 				if err := s.wsClient.Subscribe(ctx, publicChannels); err != nil {

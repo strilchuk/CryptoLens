@@ -45,9 +45,18 @@ func LogInfo(format string, v ...interface{}) {
 	Log.Printf("[INFO] [%s:%d] %s", file, line, fmt.Sprintf(format, v...))
 }
 
-// LogDebug логирует отладочное сообщение
+// LogDebug логирует отладочное сообщение только если DEBUG=true
 func LogDebug(format string, v ...interface{}) {
+	if os.Getenv("DEBUG") != "true" {
+		return
+	}
 	_, file, line, _ := runtime.Caller(1)
 	file = file[strings.LastIndex(file, "/")+1:]
 	Log.Printf("[DEBUG] [%s:%d] %s", file, line, fmt.Sprintf(format, v...))
+}
+
+func LogWarn(format string, v ...interface{}) {
+	_, file, line, _ := runtime.Caller(1)
+	file = file[strings.LastIndex(file, "/")+1:]
+	Log.Printf("[WARN] [%s:%d] %s", file, line, fmt.Sprintf(format, v...))
 }

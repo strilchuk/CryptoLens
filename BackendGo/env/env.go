@@ -76,3 +76,7 @@ func GetBybitApiMode() string {
 func GetJWTSecret() string {
 	return os.Getenv("JWT_SECRET")
 }
+
+func GetDebug() string {
+	return os.Getenv("DEBUG")
+}
