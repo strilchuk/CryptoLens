@@ -420,6 +420,11 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 		for _, order := range orders {
 			logger.LogInfo("Ордер: Symbol=%s, OrderID=%s, Status=%s",
 				order.Symbol, order.OrderID, order.OrderStatus)
+			
+			// Если ордер исполнен, обрабатываем его
+			if order.OrderStatus == "Filled" {
+				h.handleOrderMessage(ctx, order)
+			}
 		}
 
 	case "execution.spot":

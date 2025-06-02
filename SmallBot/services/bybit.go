@@ -18,6 +18,7 @@ import (
 type BybitService struct {
 	bybitClient bybit.Client
 	wsClient    *bybit.WebSocketClient
+	privateWsClient *bybit.WebSocketClient
 	wsHandler   types.BybitWebSocketHandlerInterface
 	wsMutex     sync.Mutex
 	orderActive bool
@@ -142,8 +143,14 @@ func (s *BybitService) StartPrivateWebSocket(ctx context.Context) {
 				s.closePrivateWebSockets()
 				return
 			default:
-
 				s.wsMutex.Lock()
+				
+				// Проверяем, существует ли уже подключение
+				if s.privateWsClient != nil {
+					s.wsMutex.Unlock()
+					time.Sleep(5 * time.Second)
+					continue
+				}
 
 				// Создаем соединения
 				privateWsURL := env.GetBybitWsUrl() + "/v5/private"
@@ -154,6 +161,8 @@ func (s *BybitService) StartPrivateWebSocket(ctx context.Context) {
 				// Подключаемся и подписываемся
 				if err := wsClient.Connect(ctx); err != nil {
 					logger.LogError("Failed to connect to private WebSocket: %v", err)
+					s.wsMutex.Unlock()
+					time.Sleep(5 * time.Second)
 					continue
 				}
 
@@ -171,13 +180,19 @@ func (s *BybitService) StartPrivateWebSocket(ctx context.Context) {
 				if err := wsClient.Subscribe(ctx, privateChannels); err != nil {
 					logger.LogError("Failed to subscribe to private channels: %v", err)
 					wsClient.Close()
+					s.wsMutex.Unlock()
+					time.Sleep(5 * time.Second)
 					continue
 				}
 
+				// Сохраняем клиент
+				s.privateWsClient = wsClient
 				logger.LogInfo("Успешно подключились к приватному WebSocket")
-
 				s.wsMutex.Unlock()
 
+				// Ждем завершения контекста
+				<-ctx.Done()
+				return
 			}
 		}
 	}()
@@ -187,12 +202,12 @@ func (s *BybitService) StartPrivateWebSocket(ctx context.Context) {
 func (s *BybitService) closePrivateWebSockets() {
 	s.wsMutex.Lock()
 	defer s.wsMutex.Unlock()
-	//
-	//for userID, client := range s.privateWsClients {
-	//	client.Close()
-	//	delete(s.privateWsClients, userID)
-	//	logger.LogInfo("Закрыто приватное WebSocket-соединение для userID: %s", userID)
-	//}
+	
+	if s.privateWsClient != nil {
+		s.privateWsClient.Close()
+		s.privateWsClient = nil
+		logger.LogInfo("Закрыто приватное WebSocket-соединение")
+	}
 }
 
 func (s *BybitService) CreateLimitOrder(ctx context.Context, symbol string, side string, qty string, price string) (*bybit.BybitOrderResponse, error) {
@@ -346,6 +361,10 @@ func (s *BybitService) CalculateOrderPrices(
 	// Добавляем комиссию к целевой прибыли
 	totalProfit := profitTarget.Add(fee.Mul(decimal.NewFromInt(2))) // Умножаем на 2, так как комиссия берется дважды
 	sellPrice = buyPrice.Add(totalProfit)
+
+	// Округляем цены до 2 знаков после запятой
+	buyPrice = buyPrice.Round(1)
+	sellPrice = sellPrice.Round(1)
 
 	return buyPrice, sellPrice, nil
 }
