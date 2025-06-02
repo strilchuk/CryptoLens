@@ -146,22 +146,13 @@ type BybitTicker struct {
 
 // BybitKlinesResponse представляет ответ со свечами
 type BybitKlinesResponse struct {
-	Category string        `json:"category"`
-	Symbol   string        `json:"symbol"`
-	Interval string        `json:"interval"`
-	List     []BybitKline `json:"list"`
+	Category string     `json:"category"`
+	Symbol   string     `json:"symbol"`
+	List     [][]string `json:"list"` // Массив массивов строк [timestamp, open, high, low, close, volume, turnover]
 }
 
 // BybitKline представляет свечу
-type BybitKline struct {
-	StartTime string `json:"startTime"`
-	Open      string `json:"open"`
-	High      string `json:"high"`
-	Low       string `json:"low"`
-	Close     string `json:"close"`
-	Volume    string `json:"volume"`
-	Turnover  string `json:"turnover"`
-}
+type BybitKline []string // [timestamp, open, high, low, close, volume, turnover]
 
 // BybitTradesResponse представляет ответ со сделками
 type BybitTradesResponse struct {

@@ -72,6 +72,13 @@ func (h *BybitWebSocketHandler) processMessage(ctx context.Context, msg *bybit.W
 			return
 		}
 		h.handleTickerMessage(ctx, tickerMsg)
+	case "order.spot":
+		var orderMsg bybit.OrderMessage
+		if err := json.Unmarshal(msg.Data, &orderMsg); err != nil {
+			logger.LogError("Ошибка разбора сообщения ордера: %v", err)
+			return
+		}
+		h.handleOrderMessage(ctx, orderMsg)
 	default:
 		logger.LogInfo("Неизвестный тип сообщения: %s", messageType)
 	}
@@ -103,42 +110,234 @@ func (h *BybitWebSocketHandler) monitorChannel() {
 func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg bybit.TickerMessage) {
 	jsonStr, _ := json.Marshal(msg)
 	logger.LogDebug("handleTickerMessage: %s", string(jsonStr))
-	isActive := h.service.IsOrderActive()
-	logger.LogDebug("[TradeLogic] Статус активного ордера: %v", isActive)
-	if !isActive {
-		price, err := decimal.NewFromString(msg.LastPrice)
+
+	// Проверяем, нет ли активного ордера
+	if h.service.IsOrderActive() {
+		logger.LogDebug("[TradeLogic] Есть активный ордер, пропускаем")
+		return
+	}
+
+	// Получаем текущую цену
+	currentPrice, err := decimal.NewFromString(msg.LastPrice)
+	logger.LogInfo("[TradeLogic] Текущая цена: %s для символа %s", currentPrice.String(), msg.Symbol)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка парсинга цены: %v", err)
+		return
+	}
+
+	// Получаем баланс в USDT
+	balance, err := h.service.GetUSDTBalance(ctx)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка получения баланса: %v", err)
+		return
+	}
+	logger.LogInfo("[TradeLogic] Текущий баланс USDT: %s", balance.String())
+
+	// Получаем волатильность
+	volatility, err := h.service.GetVolatility(ctx, msg.Symbol)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка получения волатильности: %v", err)
+		return
+	}
+	logger.LogInfo("[TradeLogic] Текущая волатильность для %s: %s", msg.Symbol, volatility.String())
+
+	// Получаем комиссию
+	fee, err := h.service.GetTradingFee(ctx, msg.Symbol)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка получения комиссии: %v", err)
+		return
+	}
+	logger.LogInfo("[TradeLogic] Текущая комиссия для %s: %s", msg.Symbol, fee.String())
+
+	// Параметры стратегии
+	entryOffsetPercent := decimal.NewFromFloat(0.1) // 0.1%
+	profitMultiplier := decimal.NewFromFloat(1.5)   // 1.5x волатильности
+	orderSizePercent := decimal.NewFromFloat(50.0)  // 50% от баланса
+
+	// Рассчитываем цены для ордеров
+	buyPrice, sellPrice, err := h.service.CalculateOrderPrices(
+		ctx,
+		msg.Symbol,
+		currentPrice,
+		volatility,
+		fee,
+		entryOffsetPercent,
+		profitMultiplier,
+	)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка расчета цен: %v", err)
+		return
+	}
+	logger.LogInfo("[TradeLogic] Рассчитанные цены: BuyPrice=%s, SellPrice=%s", buyPrice.String(), sellPrice.String())
+
+	// Рассчитываем размер ордера
+	orderSize, err := h.service.CalculateOrderSize(
+		ctx,
+		msg.Symbol,
+		balance,
+		orderSizePercent,
+		currentPrice,
+	)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка расчета размера ордера: %v", err)
+		return
+	}
+	// Округляем размер ордера до 6 знаков после запятой
+	orderSize = orderSize.Round(6)
+	logger.LogInfo("[TradeLogic] Рассчитанный размер ордера: %s", orderSize.String())
+
+	// Создаем ордер на покупку
+	buyOrder, err := h.service.CreateLimitOrder(
+		ctx,
+		msg.Symbol,
+		"Buy",
+		orderSize.StringFixed(6),
+		buyPrice.StringFixed(2),
+	)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка создания ордера на покупку: %v", err)
+		return
+	}
+
+	logger.LogInfo("[TradeLogic] Создан ордер на покупку: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
+		msg.Symbol, buyPrice.StringFixed(2), orderSize.StringFixed(6), buyOrder.OrderID)
+
+	// Создаем ордер на продажу
+	sellOrder, err := h.service.CreateLimitOrder(
+		ctx,
+		msg.Symbol,
+		"Sell",
+		orderSize.StringFixed(6),
+		sellPrice.StringFixed(2),
+	)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка создания ордера на продажу: %v", err)
+		// Отменяем ордер на покупку
+		_, cancelErr := h.service.CancelOrder(ctx, msg.Symbol, buyOrder.OrderID)
+		if cancelErr != nil {
+			logger.LogError("[TradeLogic] Ошибка отмены ордера на покупку: %v", cancelErr)
+		}
+		return
+	}
+
+	logger.LogInfo("[TradeLogic] Создан ордер на продажу: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
+		msg.Symbol, sellPrice.StringFixed(2), orderSize.StringFixed(6), sellOrder.OrderID)
+
+	// Сохраняем информацию об активных ордерах
+	h.service.SetLastOrderID(buyOrder.OrderID)
+	h.service.SetSellOrderID(sellOrder.OrderID)
+	h.service.SetOrderActive(true)
+}
+
+func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybit.OrderMessage) {
+	jsonStr, _ := json.Marshal(msg)
+	logger.LogDebug("handleOrderMessage: %s", string(jsonStr))
+
+	logger.LogInfo("[TradeLogic] handleOrderMessage: %s", string(jsonStr))
+
+	// Если ордер исполнен
+	if msg.OrderStatus == "Filled" {
+		logger.LogInfo("[TradeLogic] Ордер исполнен: Symbol=%s, Side=%s, Price=%s, Size=%s, OrderID=%s",
+			msg.Symbol, msg.Side, msg.Price, msg.Qty, msg.OrderID)
+
+		// Получаем текущую цену
+		currentPrice, err := decimal.NewFromString(msg.Price)
 		if err != nil {
 			logger.LogError("[TradeLogic] Ошибка парсинга цены: %v", err)
 			return
 		}
-		// Вычисляем цену на 10% ниже текущей
-		orderPrice := price.Mul(decimal.NewFromFloat(0.9)).StringFixed(2)
-		qty := "0.001" // Минимальный объем для BTCUSDT
-		orderResp, err := h.service.CreateLimitOrder(ctx, msg.Symbol, "Buy", qty, orderPrice)
+
+		// Получаем волатильность
+		volatility, err := h.service.GetVolatility(ctx, msg.Symbol)
 		if err != nil {
-			logger.LogError("[TradeLogic] Ошибка создания ордера: %v", err)
+			logger.LogError("[TradeLogic] Ошибка получения волатильности: %v", err)
 			return
 		}
 
-		logger.LogInfo("[TradeLogic] Создан ордер: Symbol=%s, Price=%s, OrderID=%s",
-			msg.Symbol, orderPrice, orderResp.OrderID)
+		// Получаем комиссию
+		fee, err := h.service.GetTradingFee(ctx, msg.Symbol)
+		if err != nil {
+			logger.LogError("[TradeLogic] Ошибка получения комиссии: %v", err)
+			return
+		}
 
-		h.service.SetLastOrderID(orderResp.OrderID)
-		h.service.SetOrderActive(true)
+		// Параметры стратегии
+		entryOffsetPercent := decimal.NewFromFloat(0.1) // 0.1%
+		profitMultiplier := decimal.NewFromFloat(1.5)   // 1.5x волатильности
 
-		// Запускаем горутину для отмены ордера через 2 минуты
-		go func(orderID, symbol string) {
-			time.Sleep(30 * time.Second)
+		// Рассчитываем цены для нового ордера
+		buyPrice, sellPrice, err := h.service.CalculateOrderPrices(
+			ctx,
+			msg.Symbol,
+			currentPrice,
+			volatility,
+			fee,
+			entryOffsetPercent,
+			profitMultiplier,
+		)
+		if err != nil {
+			logger.LogError("[TradeLogic] Ошибка расчета цен: %v", err)
+			return
+		}
 
-			_, err := h.service.CancelOrder(ctx, symbol, orderID)
+		// Если исполнился ордер на покупку
+		if msg.Side == "Buy" && msg.OrderID == h.service.GetLastOrderID() {
+			// Округляем размер ордера до 6 знаков после запятой
+			qty, err := decimal.NewFromString(msg.Qty)
 			if err != nil {
-				logger.LogError("[TradeLogic] Ошибка отмены ордера: %v", err)
-			} else {
-				logger.LogInfo("[TradeLogic] Ордер отменён: Symbol=%s, OrderID=%s", symbol, orderID)
+				logger.LogError("[TradeLogic] Ошибка парсинга размера ордера: %v", err)
+				return
+			}
+			qty = qty.Round(6)
+
+			// Создаем новый ордер на продажу
+			sellOrder, err := h.service.CreateLimitOrder(
+				ctx,
+				msg.Symbol,
+				"Sell",
+				qty.StringFixed(6),
+				sellPrice.StringFixed(2),
+			)
+			if err != nil {
+				logger.LogError("[TradeLogic] Ошибка создания ордера на продажу: %v", err)
+				return
 			}
 
-			h.service.SetOrderActive(false)
-		}(orderResp.OrderID, msg.Symbol)
+			logger.LogInfo("[TradeLogic] Создан новый ордер на продажу: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
+				msg.Symbol, sellPrice.StringFixed(2), qty.StringFixed(6), sellOrder.OrderID)
+
+			// Сохраняем ID нового ордера на продажу
+			h.service.SetSellOrderID(sellOrder.OrderID)
+		}
+		// Если исполнился ордер на продажу
+		if msg.Side == "Sell" && msg.OrderID == h.service.GetSellOrderID() {
+			// Округляем размер ордера до 6 знаков после запятой
+			qty, err := decimal.NewFromString(msg.Qty)
+			if err != nil {
+				logger.LogError("[TradeLogic] Ошибка парсинга размера ордера: %v", err)
+				return
+			}
+			qty = qty.Round(6)
+
+			// Создаем новый ордер на покупку
+			buyOrder, err := h.service.CreateLimitOrder(
+				ctx,
+				msg.Symbol,
+				"Buy",
+				qty.StringFixed(7),
+				buyPrice.StringFixed(2),
+			)
+			if err != nil {
+				logger.LogError("[TradeLogic] Ошибка создания ордера на покупку: %v", err)
+				return
+			}
+
+			logger.LogInfo("[TradeLogic] Создан новый ордер на покупку: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
+				msg.Symbol, buyPrice.StringFixed(2), qty.StringFixed(6), buyOrder.OrderID)
+
+			// Сохраняем ID нового ордера на покупку
+			h.service.SetLastOrderID(buyOrder.OrderID)
+		}
 	}
 }
 

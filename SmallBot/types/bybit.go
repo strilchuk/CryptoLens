@@ -3,6 +3,7 @@ package types
 import (
 	"SmallBot/integration/bybit"
 	"context"
+	"github.com/shopspring/decimal"
 )
 
 type BybitServiceInterface interface {
@@ -18,6 +19,31 @@ type BybitServiceInterface interface {
 	SetLastOrderID(orderID string)
 	GetLastOrderID() string
 	SetWebSocketHandler(handler BybitWebSocketHandlerInterface)
+	
+	// Новые методы для стратегии
+	GetUSDTBalance(ctx context.Context) (decimal.Decimal, error)
+	GetVolatility(ctx context.Context, symbol string) (decimal.Decimal, error)
+	GetTradingFee(ctx context.Context, symbol string) (decimal.Decimal, error)
+	CalculateOrderPrices(
+		ctx context.Context,
+		symbol string,
+		currentPrice decimal.Decimal,
+		volatility decimal.Decimal,
+		fee decimal.Decimal,
+		entryOffsetPercent decimal.Decimal,
+		profitMultiplier decimal.Decimal,
+	) (buyPrice, sellPrice decimal.Decimal, err error)
+	CalculateOrderSize(
+		ctx context.Context,
+		symbol string,
+		balance decimal.Decimal,
+		percent decimal.Decimal,
+		currentPrice decimal.Decimal,
+	) (decimal.Decimal, error)
+	
+	// Методы для работы с ID ордера на продажу
+	SetSellOrderID(orderID string)
+	GetSellOrderID() string
 }
 
 type BybitWebSocketHandlerInterface interface {

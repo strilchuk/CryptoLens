@@ -44,12 +44,12 @@ func NewContainer() *Container {
 	}
 
 	// Отменяем ордера для ETHUSDT
-	_, err = bybitService.CancelAllOrders(ctx, "ETHUSDT")
-	if err != nil {
-		logger.LogError("Ошибка при отмене ордеров ETHUSDT: %v", err)
-	} else {
-		logger.LogInfo("Все ордера ETHUSDT успешно отменены")
-	}
+	//_, err = bybitService.CancelAllOrders(ctx, "ETHUSDT")
+	//if err != nil {
+	//	logger.LogError("Ошибка при отмене ордеров ETHUSDT: %v", err)
+	//} else {
+	//	logger.LogInfo("Все ордера ETHUSDT успешно отменены")
+	//}
 
 	return &Container{
 		BybitClient:  bybitClient,
@@ -75,13 +75,13 @@ func (c *Container) Close() error {
 		logger.LogInfo("Все ордера BTCUSDT успешно отменены")
 	}
 
-	// Отменяем ордера для ETHUSDT
-	_, err = c.BybitService.CancelAllOrders(ctx, "ETHUSDT")
-	if err != nil {
-		logger.LogError("Ошибка при отмене ордеров ETHUSDT: %v", err)
-	} else {
-		logger.LogInfo("Все ордера ETHUSDT успешно отменены")
-	}
+	//// Отменяем ордера для ETHUSDT
+	//_, err = c.BybitService.CancelAllOrders(ctx, "ETHUSDT")
+	//if err != nil {
+	//	logger.LogError("Ошибка при отмене ордеров ETHUSDT: %v", err)
+	//} else {
+	//	logger.LogInfo("Все ордера ETHUSDT успешно отменены")
+	//}
 
 	return nil
 }
