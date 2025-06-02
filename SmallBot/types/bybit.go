@@ -22,6 +22,7 @@ type BybitServiceInterface interface {
 	
 	// Новые методы для стратегии
 	GetUSDTBalance(ctx context.Context) (decimal.Decimal, error)
+	GetBTCBalance(ctx context.Context) (decimal.Decimal, error)
 	GetVolatility(ctx context.Context, symbol string) (decimal.Decimal, error)
 	GetTradingFee(ctx context.Context, symbol string) (decimal.Decimal, error)
 	CalculateOrderPrices(

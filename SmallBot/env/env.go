@@ -60,3 +60,7 @@ func GetBybitApiMode() string {
 func GetDebug() string {
 	return os.Getenv("DEBUG")
 }
+
+func GetSymbol() string {
+	return os.Getenv("SYMBOL")
+}

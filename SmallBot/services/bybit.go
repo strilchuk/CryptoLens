@@ -100,7 +100,8 @@ func (s *BybitService) StartWebSocket(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			default:
-				publicChannels := []string{"tickers.BTCUSDT"}
+				symbol := env.GetSymbol()
+				publicChannels := []string{fmt.Sprintf("tickers.%s", symbol)}
 				logger.LogInfo("Подписываемся на каналы для активных инструментов: %v", publicChannels)
 
 				// Подключаемся к WebSocket
@@ -243,53 +244,68 @@ func (s *BybitService) GetUSDTBalance(ctx context.Context) (decimal.Decimal, err
 	return decimal.Zero, fmt.Errorf("USDT не найден в балансе")
 }
 
-// Получает волатильность за последние 4 часа
+// Получает баланс в BTC
+func (s *BybitService) GetBTCBalance(ctx context.Context) (decimal.Decimal, error) {
+	balance, err := s.GetWalletBalance(ctx, "")
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("ошибка получения баланса: %w", err)
+	}
+
+	// Ищем BTC в балансе
+	for _, coin := range balance.List[0].Coins {
+		if coin.Coin == "BTC" {
+			return parseDecimal(coin.WalletBalance), nil
+		}
+	}
+
+	return decimal.Zero, fmt.Errorf("BTC не найден в балансе")
+}
+
+// Получает волатильность за последний час
 func (s *BybitService) GetVolatility(ctx context.Context, symbol string) (decimal.Decimal, error) {
-	// Получаем свечи за последние 4 часа (240 минут)
-	klines, err := s.bybitClient.GetKlines(ctx, "spot", symbol, "15", 16, nil, nil)
+	// Получаем свечи за последний час (60 минут)
+	klines, err := s.bybitClient.GetKlines(ctx, "spot", symbol, "15", 4, nil, nil)
 	if err != nil {
 		return decimal.Zero, fmt.Errorf("ошибка получения свечей: %w", err)
 	}
 
-	if len(klines.List) < 2 {
-		return decimal.Zero, fmt.Errorf("недостаточно данных для расчета волатильности")
+	// Проверяем достаточность данных
+	if len(klines.List) < 4 {
+		return decimal.Zero, fmt.Errorf("недостаточно данных для расчета волатильности: получено %d свечей, нужно минимум 4", len(klines.List))
 	}
 
-	// Рассчитываем волатильность как стандартное отклонение
+	// Собираем цены закрытия
 	var prices []decimal.Decimal
-	for _, kline := range klines.List {
-		// Преобразуем строки в decimal
-		high, err := decimal.NewFromString(kline[2]) // High price
+	for i, kline := range klines.List {
+		closePrice, err := decimal.NewFromString(kline[4]) // Используем цену закрытия
 		if err != nil {
-			return decimal.Zero, fmt.Errorf("ошибка парсинга high price: %w", err)
+			return decimal.Zero, fmt.Errorf("ошибка парсинга цены закрытия для свечи %d: %w", i, err)
 		}
-		low, err := decimal.NewFromString(kline[3]) // Low price
-		if err != nil {
-			return decimal.Zero, fmt.Errorf("ошибка парсинга low price: %w", err)
-		}
-		// Используем среднюю цену (high + low) / 2
-		prices = append(prices, high.Add(low).Div(decimal.NewFromInt(2)))
+		prices = append(prices, closePrice)
 	}
 
-	// Среднее значение
+	// Рассчитываем среднюю цену
 	var sum decimal.Decimal
 	for _, price := range prices {
 		sum = sum.Add(price)
 	}
 	mean := sum.Div(decimal.NewFromInt(int64(len(prices))))
 
-	// Квадраты отклонений
+	// Рассчитываем сумму квадратов отклонений
 	var squaredDiffs decimal.Decimal
 	for _, price := range prices {
 		diff := price.Sub(mean)
 		squaredDiffs = squaredDiffs.Add(diff.Mul(diff))
 	}
 
-	// Стандартное отклонение
-	variance := squaredDiffs.Div(decimal.NewFromInt(int64(len(prices))))
+	// Рассчитываем выборочную дисперсию (N-1) и стандартное отклонение
+	variance := squaredDiffs.Div(decimal.NewFromInt(int64(len(prices) - 1)))
 	volatility := decimal.NewFromFloat(math.Sqrt(variance.InexactFloat64()))
 
-	return volatility, nil
+	// Рассчитываем относительную волатильность в процентах
+	relativeVolatility := volatility.Div(mean).Mul(decimal.NewFromInt(100))
+
+	return relativeVolatility, nil
 }
 
 // Получает комиссию для торговой пары
@@ -323,7 +339,10 @@ func (s *BybitService) CalculateOrderPrices(
 	buyPrice = currentPrice.Sub(entryOffset)
 
 	// Рассчитываем целевую прибыль
-	profitTarget := volatility.Mul(profitMultiplier)
+	// Используем абсолютную волатильность (в USDT)
+	volatilityUSDT := currentPrice.Mul(volatility).Div(decimal.NewFromInt(100))
+	profitTarget := volatilityUSDT.Mul(profitMultiplier)
+	
 	// Добавляем комиссию к целевой прибыли
 	totalProfit := profitTarget.Add(fee.Mul(decimal.NewFromInt(2))) // Умножаем на 2, так как комиссия берется дважды
 	sellPrice = buyPrice.Add(totalProfit)

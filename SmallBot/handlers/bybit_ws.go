@@ -186,6 +186,14 @@ func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg byb
 	orderSize = orderSize.Round(6)
 	logger.LogInfo("[TradeLogic] Рассчитанный размер ордера: %s", orderSize.String())
 
+	// Проверяем баланс BTC
+	btcBalance, err := h.service.GetBTCBalance(ctx)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка получения баланса BTC: %v", err)
+		return
+	}
+	logger.LogInfo("[TradeLogic] Текущий баланс BTC: %s", btcBalance.String())
+
 	// Создаем ордер на покупку
 	buyOrder, err := h.service.CreateLimitOrder(
 		ctx,
@@ -202,30 +210,38 @@ func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg byb
 	logger.LogInfo("[TradeLogic] Создан ордер на покупку: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
 		msg.Symbol, buyPrice.StringFixed(2), orderSize.StringFixed(6), buyOrder.OrderID)
 
-	// Создаем ордер на продажу
-	sellOrder, err := h.service.CreateLimitOrder(
-		ctx,
-		msg.Symbol,
-		"Sell",
-		orderSize.StringFixed(6),
-		sellPrice.StringFixed(2),
-	)
-	if err != nil {
-		logger.LogError("[TradeLogic] Ошибка создания ордера на продажу: %v", err)
-		// Отменяем ордер на покупку
-		_, cancelErr := h.service.CancelOrder(ctx, msg.Symbol, buyOrder.OrderID)
-		if cancelErr != nil {
-			logger.LogError("[TradeLogic] Ошибка отмены ордера на покупку: %v", cancelErr)
+	// Проверяем, достаточно ли BTC для продажи
+	if btcBalance.GreaterThanOrEqual(orderSize) {
+		// Создаем ордер на продажу
+		sellOrder, err := h.service.CreateLimitOrder(
+			ctx,
+			msg.Symbol,
+			"Sell",
+			orderSize.StringFixed(6),
+			sellPrice.StringFixed(2),
+		)
+		if err != nil {
+			logger.LogError("[TradeLogic] Ошибка создания ордера на продажу: %v", err)
+			// Отменяем ордер на покупку
+			_, cancelErr := h.service.CancelOrder(ctx, msg.Symbol, buyOrder.OrderID)
+			if cancelErr != nil {
+				logger.LogError("[TradeLogic] Ошибка отмены ордера на покупку: %v", cancelErr)
+			}
+			return
 		}
-		return
-	}
 
-	logger.LogInfo("[TradeLogic] Создан ордер на продажу: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
-		msg.Symbol, sellPrice.StringFixed(2), orderSize.StringFixed(6), sellOrder.OrderID)
+		logger.LogInfo("[TradeLogic] Создан ордер на продажу: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
+			msg.Symbol, sellPrice.StringFixed(2), orderSize.StringFixed(6), sellOrder.OrderID)
+
+		// Сохраняем ID ордера на продажу
+		h.service.SetSellOrderID(sellOrder.OrderID)
+	} else {
+		logger.LogInfo("[TradeLogic] Недостаточно BTC для создания ордера на продажу: баланс=%s, требуется=%s. Продолжаем только с ордером на покупку", 
+			btcBalance.String(), orderSize.String())
+	}
 
 	// Сохраняем информацию об активных ордерах
 	h.service.SetLastOrderID(buyOrder.OrderID)
-	h.service.SetSellOrderID(sellOrder.OrderID)
 	h.service.SetOrderActive(true)
 }
 
@@ -282,6 +298,14 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 
 		// Если исполнился ордер на покупку
 		if msg.Side == "Buy" && msg.OrderID == h.service.GetLastOrderID() {
+			// Отменяем ордер на продажу
+			_, err = h.service.CancelOrder(ctx, msg.Symbol, h.service.GetSellOrderID())
+			if err != nil {
+				logger.LogError("[TradeLogic] Ошибка отмены ордера на продажу: %v", err)
+			} else {
+				logger.LogInfo("[TradeLogic] Ордер на продажу успешно отменен")
+			}
+
 			// Округляем размер ордера до 6 знаков после запятой
 			qty, err := decimal.NewFromString(msg.Qty)
 			if err != nil {
@@ -289,6 +313,21 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 				return
 			}
 			qty = qty.Round(6)
+
+			// Проверяем баланс BTC
+			btcBalance, err := h.service.GetBTCBalance(ctx)
+			if err != nil {
+				logger.LogError("[TradeLogic] Ошибка получения баланса BTC: %v", err)
+				return
+			}
+			logger.LogInfo("[TradeLogic] Текущий баланс BTC: %s", btcBalance.String())
+
+			// Проверяем, достаточно ли BTC для продажи
+			if btcBalance.LessThan(qty) {
+				logger.LogError("[TradeLogic] Недостаточно BTC для продажи: баланс=%s, требуется=%s", 
+					btcBalance.String(), qty.String())
+				return
+			}
 
 			// Создаем новый ордер на продажу
 			sellOrder, err := h.service.CreateLimitOrder(
@@ -311,6 +350,14 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 		}
 		// Если исполнился ордер на продажу
 		if msg.Side == "Sell" && msg.OrderID == h.service.GetSellOrderID() {
+			// Отменяем ордер на покупку
+			_, err = h.service.CancelOrder(ctx, msg.Symbol, h.service.GetLastOrderID())
+			if err != nil {
+				logger.LogError("[TradeLogic] Ошибка отмены ордера на покупку: %v", err)
+			} else {
+				logger.LogInfo("[TradeLogic] Ордер на покупку успешно отменен")
+			}
+
 			// Округляем размер ордера до 6 знаков после запятой
 			qty, err := decimal.NewFromString(msg.Qty)
 			if err != nil {
@@ -319,12 +366,31 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 			}
 			qty = qty.Round(6)
 
+			// Проверяем баланс USDT
+			usdtBalance, err := h.service.GetUSDTBalance(ctx)
+			if err != nil {
+				logger.LogError("[TradeLogic] Ошибка получения баланса USDT: %v", err)
+				return
+			}
+			logger.LogInfo("[TradeLogic] Текущий баланс USDT: %s", usdtBalance.String())
+
+			// Рассчитываем необходимую сумму USDT для покупки
+			requiredUSDT := qty.Mul(buyPrice)
+			logger.LogInfo("[TradeLogic] Требуется USDT для покупки: %s", requiredUSDT.String())
+
+			// Проверяем, достаточно ли USDT для покупки
+			if usdtBalance.LessThan(requiredUSDT) {
+				logger.LogError("[TradeLogic] Недостаточно USDT для покупки: баланс=%s, требуется=%s", 
+					usdtBalance.String(), requiredUSDT.String())
+				return
+			}
+
 			// Создаем новый ордер на покупку
 			buyOrder, err := h.service.CreateLimitOrder(
 				ctx,
 				msg.Symbol,
 				"Buy",
-				qty.StringFixed(7),
+				qty.StringFixed(6),
 				buyPrice.StringFixed(2),
 			)
 			if err != nil {

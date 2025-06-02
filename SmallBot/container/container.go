@@ -35,12 +35,13 @@ func NewContainer() *Container {
 	ctx := context.Background()
 	logger.LogInfo("Отмена всех ордеров при старте...")
 
-	// Отменяем ордера для BTCUSDT
-	_, err := bybitService.CancelAllOrders(ctx, "BTCUSDT")
+	// Отменяем ордера для символа
+	symbol := env.GetSymbol()
+	_, err := bybitService.CancelAllOrders(ctx, symbol)
 	if err != nil {
-		logger.LogError("Ошибка при отмене ордеров BTCUSDT: %v", err)
+		logger.LogError("Ошибка при отмене ордеров %s: %v", symbol, err)
 	} else {
-		logger.LogInfo("Все ордера BTCUSDT успешно отменены")
+		logger.LogInfo("Все ордера %s успешно отменены", symbol)
 	}
 
 	// Отменяем ордера для ETHUSDT
@@ -67,12 +68,13 @@ func (c *Container) Close() error {
 	ctx := context.Background()
 	logger.LogInfo("Отмена всех ордеров при завершении...")
 
-	// Отменяем ордера для BTCUSDT
-	_, err := c.BybitService.CancelAllOrders(ctx, "BTCUSDT")
+	// Отменяем ордера для символа
+	symbol := env.GetSymbol()
+	_, err := c.BybitService.CancelAllOrders(ctx, symbol)
 	if err != nil {
-		logger.LogError("Ошибка при отмене ордеров BTCUSDT: %v", err)
+		logger.LogError("Ошибка при отмене ордеров %s: %v", symbol, err)
 	} else {
-		logger.LogInfo("Все ордера BTCUSDT успешно отменены")
+		logger.LogInfo("Все ордера %s успешно отменены", symbol)
 	}
 
 	//// Отменяем ордера для ETHUSDT
