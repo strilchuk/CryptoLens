@@ -12,10 +12,12 @@ type BybitServiceInterface interface {
 	StartPrivateWebSocket(ctx context.Context)
 	CreateLimitOrder(ctx context.Context, symbol string, side string, qty string, price string) (*bybit.BybitOrderResponse, error)
 	CancelOrder(ctx context.Context, symbol string, orderID string) (*bybit.BybitOrderResponse, error)
+	CancelAllOrders(ctx context.Context, symbol string) (*bybit.BybitOrderResponse, error)
 	IsOrderActive() bool
 	SetOrderActive(active bool)
 	SetLastOrderID(orderID string)
 	GetLastOrderID() string
+	SetWebSocketHandler(handler BybitWebSocketHandlerInterface)
 }
 
 type BybitWebSocketHandlerInterface interface {

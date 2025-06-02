@@ -199,6 +199,10 @@ func (s *BybitService) CancelOrder(ctx context.Context, symbol string, orderID s
 	return s.bybitClient.CancelOrder(ctx, symbol, orderID)
 }
 
+func (s *BybitService) CancelAllOrders(ctx context.Context, symbol string) (*bybit.BybitOrderResponse, error) {
+	return s.bybitClient.CancelAllOrders(ctx, symbol)
+}
+
 func (s *BybitService) IsOrderActive() bool {
 	return s.orderActive
 }
