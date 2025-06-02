@@ -27,7 +27,7 @@ func Init(logFilePath string) error {
 		return err
 	}
 	multiWriter := io.MultiWriter(os.Stdout, logFile)
-	Log = log.New(multiWriter, "", 0)
+	Log = log.New(multiWriter, "", log.Ldate|log.Ltime)
 	return nil
 }
 

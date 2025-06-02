@@ -208,8 +208,12 @@ func (c *client) GetTickers(ctx context.Context, category string, symbol *string
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
+	resultBytes, err := json.Marshal(bybitResp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
+	}
 	var result BybitTickersResponse
-	if err := json.Unmarshal(bybitResp.Result.(json.RawMessage), &result); err != nil {
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 
@@ -260,8 +264,12 @@ func (c *client) GetKlines(
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
+	resultBytes, err := json.Marshal(bybitResp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
+	}
 	var result BybitKlinesResponse
-	if err := json.Unmarshal(bybitResp.Result.(json.RawMessage), &result); err != nil {
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 
@@ -306,8 +314,12 @@ func (c *client) GetTrades(
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
+	resultBytes, err := json.Marshal(bybitResp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
+	}
 	var result BybitTradesResponse
-	if err := json.Unmarshal(bybitResp.Result.(json.RawMessage), &result); err != nil {
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 
@@ -377,11 +389,15 @@ func (c *client) CreateOrder(
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
+	// Исправление: маршалим Result в JSON, затем размаршалим в BybitOrderResponse
+	resultBytes, err := json.Marshal(bybitResp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
+	}
 	var result BybitOrderResponse
-	if err := json.Unmarshal(bybitResp.Result.(json.RawMessage), &result); err != nil {
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
-
 	return &result, nil
 }
 
@@ -442,11 +458,14 @@ func (c *client) AmendOrder(
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
+	resultBytes, err := json.Marshal(bybitResp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
+	}
 	var result BybitOrderResponse
-	if err := json.Unmarshal(bybitResp.Result.(json.RawMessage), &result); err != nil {
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
-
 	return &result, nil
 }
 
@@ -498,11 +517,14 @@ func (c *client) CancelOrder(
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
+	resultBytes, err := json.Marshal(bybitResp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
+	}
 	var result BybitOrderResponse
-	if err := json.Unmarshal(bybitResp.Result.(json.RawMessage), &result); err != nil {
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
-
 	return &result, nil
 }
 
@@ -552,11 +574,14 @@ func (c *client) CancelAllOrders(
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
+	resultBytes, err := json.Marshal(bybitResp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
+	}
 	var result BybitOrderResponse
-	if err := json.Unmarshal(bybitResp.Result.(json.RawMessage), &result); err != nil {
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
-
 	return &result, nil
 }
 
@@ -606,11 +631,14 @@ func (c *client) GetOpenOrders(
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
+	resultBytes, err := json.Marshal(bybitResp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
+	}
 	var result BybitOrderListResponse
-	if err := json.Unmarshal(bybitResp.Result.(json.RawMessage), &result); err != nil {
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
-
 	return &result, nil
 }
 

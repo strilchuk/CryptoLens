@@ -18,6 +18,8 @@ type BybitService struct {
 	wsClient    *bybit.WebSocketClient
 	wsHandler   types.BybitWebSocketHandlerInterface
 	wsMutex     sync.Mutex
+	orderActive bool
+	lastOrderID string
 }
 
 func NewBybitService(
@@ -187,4 +189,32 @@ func (s *BybitService) closePrivateWebSockets() {
 	//	delete(s.privateWsClients, userID)
 	//	logger.LogInfo("Закрыто приватное WebSocket-соединение для userID: %s", userID)
 	//}
+}
+
+func (s *BybitService) CreateLimitOrder(ctx context.Context, symbol string, side string, qty string, price string) (*bybit.BybitOrderResponse, error) {
+	return s.bybitClient.CreateOrder(ctx, symbol, side, "Limit", qty, &price, "GTC", nil)
+}
+
+func (s *BybitService) CancelOrder(ctx context.Context, symbol string, orderID string) (*bybit.BybitOrderResponse, error) {
+	return s.bybitClient.CancelOrder(ctx, symbol, orderID)
+}
+
+func (s *BybitService) IsOrderActive() bool {
+	return s.orderActive
+}
+
+func (s *BybitService) SetOrderActive(active bool) {
+	s.orderActive = active
+}
+
+func (s *BybitService) SetLastOrderID(orderID string) {
+	s.lastOrderID = orderID
+}
+
+func (s *BybitService) GetLastOrderID() string {
+	return s.lastOrderID
+}
+
+func (s *BybitService) SetWebSocketHandler(handler types.BybitWebSocketHandlerInterface) {
+	s.wsHandler = handler
 }

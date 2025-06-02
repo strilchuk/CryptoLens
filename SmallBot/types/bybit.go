@@ -10,6 +10,12 @@ type BybitServiceInterface interface {
 	GetFeeRate(ctx context.Context, token string, category string, symbol string, baseCoin string) (*bybit.BybitFeeRateResponse, error)
 	StartWebSocket(ctx context.Context)
 	StartPrivateWebSocket(ctx context.Context)
+	CreateLimitOrder(ctx context.Context, symbol string, side string, qty string, price string) (*bybit.BybitOrderResponse, error)
+	CancelOrder(ctx context.Context, symbol string, orderID string) (*bybit.BybitOrderResponse, error)
+	IsOrderActive() bool
+	SetOrderActive(active bool)
+	SetLastOrderID(orderID string)
+	GetLastOrderID() string
 }
 
 type BybitWebSocketHandlerInterface interface {

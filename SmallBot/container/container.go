@@ -20,8 +20,17 @@ func NewContainer() *Container {
 	apiMode := env.GetBybitApiMode()
 	apiUrl := env.GetBybitApiUrl()
 	bybitClient := bybit.NewClient(apiUrl, recvWindow, apiMode == "test")
-	wsHandler := handlers.NewBybitWebSocketHandler()
-	bybitService := services.NewBybitService(bybitClient, wsHandler)
+
+	// Сначала создаём bybitService с временным nil wsHandler
+	var bybitService *services.BybitService
+	bybitService = services.NewBybitService(bybitClient, nil)
+
+	// Теперь создаём wsHandler, передавая bybitService
+	wsHandler := handlers.NewBybitWebSocketHandler(bybitService)
+
+	// Обновляем wsHandler в bybitService, если есть метод SetWebSocketHandler
+	bybitService.SetWebSocketHandler(wsHandler)
+
 	return &Container{
 		BybitClient:  bybitClient,
 		BybitService: bybitService,

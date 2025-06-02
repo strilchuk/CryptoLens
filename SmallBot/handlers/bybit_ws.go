@@ -3,20 +3,26 @@ package handlers
 import (
 	"SmallBot/integration/bybit"
 	"SmallBot/logger"
+	"SmallBot/types"
 	"context"
 	"encoding/json"
+	"github.com/shopspring/decimal"
 	"strings"
+	"time"
 )
 
 type BybitWebSocketHandler struct {
 	msgChan chan *bybit.WebSocketMessage
+	service types.BybitServiceInterface
 }
 
-func NewBybitWebSocketHandler() *BybitWebSocketHandler {
+func NewBybitWebSocketHandler(service types.BybitServiceInterface) *BybitWebSocketHandler {
 	handler := &BybitWebSocketHandler{
-		msgChan: make(chan *bybit.WebSocketMessage, 1000), // Буфер на 1000 сообщений
+		msgChan: make(chan *bybit.WebSocketMessage, 100),
+		service: service,
 	}
 	go handler.processMessages()
+	go handler.monitorChannel()
 	return handler
 }
 
@@ -72,19 +78,68 @@ func (h *BybitWebSocketHandler) processMessage(ctx context.Context, msg *bybit.W
 }
 
 func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.WebSocketMessage) {
-	logger.LogDebug("Получено сообщение: Topic=%s", msg.Topic)
 	select {
-	case h.msgChan <- &msg: // Отправка в канал без блокировки
-		logger.LogDebug("Сообщение отправлено в канал: Topic=%s", msg.Topic)
+	case h.msgChan <- &msg:
 	default:
-		logger.LogWarn("Канал переполнен, сообщение отброшено: Topic=%s", msg.Topic)
+		h.msgChan <- &msg
+	}
+}
+
+func (h *BybitWebSocketHandler) monitorChannel() {
+	for {
+		time.Sleep(time.Second)
+		channelLen := len(h.msgChan)
+		channelCap := cap(h.msgChan)
+		fillPercentage := float64(channelLen) / float64(channelCap) * 100
+
+		if fillPercentage >= 100 {
+			logger.LogError("[CRITICAL] Канал сообщений переполнен! Заполнение: %.2f%%", fillPercentage)
+		} else if fillPercentage >= 80 {
+			logger.LogWarn("[WARNING] Канал сообщений почти заполнен! Заполнение: %.2f%%", fillPercentage)
+		}
 	}
 }
 
 func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg bybit.TickerMessage) {
-	//logger.LogInfo("Тикер %s: цена=%s, объем=%s",
-	//	msg.Symbol, msg.LastPrice, msg.Volume24h)
-	// Здесь можно добавить дополнительную логику обработки тикера
+	jsonStr, _ := json.Marshal(msg)
+	logger.LogDebug("handleTickerMessage: %s", string(jsonStr))
+	isActive := h.service.IsOrderActive()
+	logger.LogDebug("[TradeLogic] Статус активного ордера: %v", isActive)
+	if !isActive {
+		price, err := decimal.NewFromString(msg.LastPrice)
+		if err != nil {
+			logger.LogError("[TradeLogic] Ошибка парсинга цены: %v", err)
+			return
+		}
+		// Вычисляем цену на 10% ниже текущей
+		orderPrice := price.Mul(decimal.NewFromFloat(0.9)).StringFixed(2)
+		qty := "0.001" // Минимальный объем для BTCUSDT
+		orderResp, err := h.service.CreateLimitOrder(ctx, msg.Symbol, "Buy", qty, orderPrice)
+		if err != nil {
+			logger.LogError("[TradeLogic] Ошибка создания ордера: %v", err)
+			return
+		}
+
+		logger.LogInfo("[TradeLogic] Создан ордер: Symbol=%s, Price=%s, OrderID=%s",
+			msg.Symbol, orderPrice, orderResp.OrderID)
+
+		h.service.SetLastOrderID(orderResp.OrderID)
+		h.service.SetOrderActive(true)
+
+		// Запускаем горутину для отмены ордера через 2 минуты
+		go func(orderID, symbol string) {
+			time.Sleep(30 * time.Second)
+
+			_, err := h.service.CancelOrder(ctx, symbol, orderID)
+			if err != nil {
+				logger.LogError("[TradeLogic] Ошибка отмены ордера: %v", err)
+			} else {
+				logger.LogInfo("[TradeLogic] Ордер отменён: Symbol=%s, OrderID=%s", symbol, orderID)
+			}
+
+			h.service.SetOrderActive(false)
+		}(orderResp.OrderID, msg.Symbol)
+	}
 }
 
 func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg bybit.WebSocketMessage) {

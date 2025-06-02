@@ -38,5 +38,4 @@ func main() {
 	if err := ctr.Close(); err != nil {
 		log.Printf("Error during shutdown: %v", err)
 	}
-
 }
