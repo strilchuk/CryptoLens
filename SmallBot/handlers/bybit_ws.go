@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"SmallBot/env"
 	"SmallBot/integration/bybit"
 	"SmallBot/logger"
 	"SmallBot/types"
@@ -8,27 +9,33 @@ import (
 	"encoding/json"
 	"github.com/shopspring/decimal"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
 	EntryOffsetPercent = 0.05 // 0.05%
 	ProfitMultiplier   = 1.5  // 1.5x волатильности
-	OrderSizePercent   = 80.0 // 80% от баланса
+	OrderSizePercent   = 20.0 // 80% от баланса
+	BuyOrderTimeout    = 1 * time.Minute
 )
 
 type BybitWebSocketHandler struct {
-	msgChan chan *bybit.WebSocketMessage
-	service types.BybitServiceInterface
+	msgChan        chan *bybit.WebSocketMessage
+	service        types.BybitServiceInterface
+	buyOrderTimers map[string]time.Time // orderID -> creation time
+	mu             sync.Mutex
 }
 
 func NewBybitWebSocketHandler(service types.BybitServiceInterface) *BybitWebSocketHandler {
 	handler := &BybitWebSocketHandler{
-		msgChan: make(chan *bybit.WebSocketMessage, 100),
-		service: service,
+		msgChan:        make(chan *bybit.WebSocketMessage, 100),
+		service:        service,
+		buyOrderTimers: make(map[string]time.Time),
 	}
 	go handler.processMessages()
 	go handler.monitorChannel()
+	go handler.buyOrderTimeoutWatcher()
 	return handler
 }
 
@@ -220,6 +227,7 @@ func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg byb
 
 	if err == nil {
 		h.service.SetBuyOrderID(buyOrder.OrderID)
+		h.addBuyOrderTimer(buyOrder.OrderID)
 	}
 
 	// Проверяем, достаточно ли BTC для продажи
@@ -343,6 +351,28 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 				h.service.SetLastOrderID(buyOrder.OrderID)
 			}
 		}
+		h.removeBuyOrderTimer(msg.OrderID)
+	}
+
+	// Если ордер отменён
+	if msg.OrderStatus == "Cancelled" {
+		logger.LogInfo("[TradeLogic] Ордер отменён: Symbol=%s, Side=%s, OrderID=%s", msg.Symbol, msg.Side, msg.OrderID)
+
+		if msg.Side == "Buy" {
+			h.service.SetBuyOrderID("")
+		} else {
+			h.service.SetSellOrderID("")
+		}
+
+		// Проверяем, есть ли ещё активные ордера (buy/sell)
+		buyID := h.service.GetBuyOrderID()
+		sellID := h.service.GetSellOrderID()
+		if (buyID == "") && (sellID == "") {
+			h.service.SetOrderActive(false)
+			logger.LogInfo("[TradeLogic] Нет активных ордеров, SetOrderActive(false)")
+		} else {
+			logger.LogInfo("[TradeLogic] Есть активные ордера, пропускаем, buyID=%s, sellID=%s", buyID, sellID)
+		}
 	}
 }
 
@@ -360,8 +390,8 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 			logger.LogInfo("Ордер: Symbol=%s, OrderID=%s, Status=%s",
 				order.Symbol, order.OrderID, order.OrderStatus)
 
-			// Если ордер исполнен, обрабатываем его
-			if order.OrderStatus == "Filled" {
+			// Если ордер исполнен или отменён, обрабатываем его
+			if order.OrderStatus == "Filled" || order.OrderStatus == "Cancelled" {
 				h.handleOrderMessage(ctx, order)
 			}
 		}
@@ -396,5 +426,47 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 
 	default:
 		logger.LogInfo("Неизвестный приватный топик: %s", msg.Topic)
+	}
+}
+
+// Добавлять buy-ордер в таймер
+func (h *BybitWebSocketHandler) addBuyOrderTimer(orderID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.buyOrderTimers[orderID] = time.Now()
+}
+
+// Удалять buy-ордер из таймера
+func (h *BybitWebSocketHandler) removeBuyOrderTimer(orderID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.buyOrderTimers, orderID)
+}
+
+// Проверка buy-ордеров на таймаут
+func (h *BybitWebSocketHandler) buyOrderTimeoutWatcher() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for {
+		time.Sleep(1 * time.Second)
+		h.mu.Lock()
+		for orderID, created := range h.buyOrderTimers {
+			if time.Since(created) > BuyOrderTimeout && h.service.GetSellOrderID() == "" {
+				// Отменяем buy-ордер
+				ctx := context.Background()
+				_, err := h.service.CancelOrder(ctx, env.GetSymbol(), orderID)
+				if err != nil {
+					logger.LogError("[TradeLogic] Не удалось отменить buy-ордер по таймауту: %v", err)
+					continue
+				}
+				logger.LogInfo("[TradeLogic] Buy-ордер %s отменён по таймауту", orderID)
+
+				// Удаляем старый orderID из таймера
+				h.removeBuyOrderTimer(orderID)
+				h.service.SetOrderActive(false)
+			}
+		}
+		h.mu.Unlock()
+		time.Sleep(10 * time.Second)
 	}
 }
