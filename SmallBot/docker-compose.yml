@@ -9,4 +9,4 @@ services:
     ports:
       - ${SERVER_PORT}:${SERVER_PORT}
     volumes:
-      - ./logs:/app/logs
+      - ./logs:/root/logs

@@ -96,7 +96,7 @@ func (c *client) GetWalletBalance(ctx context.Context) (*BybitWalletBalance, err
 	if err != nil {
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
-	logger.LogInfo("Bybit API Response: %s", string(resultBytes))
+	logger.LogDebug("Bybit API Response: %s", string(resultBytes))
 
 	// Преобразуем result в map[string]interface{}
 	resultMap, ok := bybitResp.Result.(map[string]interface{})

@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+const (
+	EntryOffsetPercent = 0.05 // 0.05%
+	ProfitMultiplier   = 1.5  // 1.5x волатильности
+	OrderSizePercent   = 80.0 // 80% от баланса
+)
+
 type BybitWebSocketHandler struct {
 	msgChan chan *bybit.WebSocketMessage
 	service types.BybitServiceInterface
@@ -107,6 +113,77 @@ func (h *BybitWebSocketHandler) monitorChannel() {
 	}
 }
 
+// Универсальная функция для расчёта параметров ордера
+func (h *BybitWebSocketHandler) prepareOrderParams(
+	ctx context.Context,
+	symbol string,
+	currentPrice decimal.Decimal,
+) (buyPrice, sellPrice, orderSize, fee, volatility, usdBalance, btcBalance decimal.Decimal, err error) {
+	// Получаем волатильность
+	volatility, err = h.service.GetVolatility(ctx, symbol)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка получения волатильности: %v", err)
+		return
+	}
+
+	// Получаем комиссию
+	fee, err = h.service.GetTradingFee(ctx, symbol)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка получения комиссии: %v", err)
+		return
+	}
+
+	// Получаем баланс USDT
+	usdBalance, err = h.service.GetUSDTBalance(ctx)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка получения баланса: %v", err)
+		return
+	}
+	logger.LogInfo("[TradeLogic] Текущий баланс USD: %s", usdBalance.String())
+
+	// Проверяем баланс BTC
+	btcBalance, err = h.service.GetBTCBalance(ctx)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка получения баланса BTC: %v", err)
+		return
+	}
+	logger.LogInfo("[TradeLogic] Текущий баланс BTC: %s", btcBalance.String())
+
+	// Рассчитываем цены для ордеров
+	buyPrice, sellPrice, err = h.service.CalculateOrderPrices(
+		ctx,
+		symbol,
+		currentPrice,
+		volatility,
+		fee,
+		decimal.NewFromFloat(EntryOffsetPercent),
+		decimal.NewFromFloat(ProfitMultiplier),
+	)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка расчета цен: %v", err)
+		return
+	}
+
+	// Рассчитываем размер ордера
+	orderSize, err = h.service.CalculateOrderSize(
+		ctx,
+		symbol,
+		usdBalance,
+		decimal.NewFromFloat(OrderSizePercent),
+		currentPrice,
+	)
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка расчета размера ордера: %v", err)
+		return
+	}
+	orderSize = orderSize.Round(6)
+
+	logger.LogInfo("[TradeLogic] buyPrice=%s, sellPrice=%s, orderSize=%s, fee=%s, volatility=%s",
+		buyPrice.String(), sellPrice.String(), orderSize.String(), fee.String(), volatility.String())
+
+	return
+}
+
 func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg bybit.TickerMessage) {
 	jsonStr, _ := json.Marshal(msg)
 	logger.LogDebug("handleTickerMessage: %s", string(jsonStr))
@@ -119,80 +196,18 @@ func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg byb
 
 	// Получаем текущую цену
 	currentPrice, err := decimal.NewFromString(msg.LastPrice)
-	logger.LogInfo("[TradeLogic] Текущая цена: %s для символа %s", currentPrice.String(), msg.Symbol)
 	if err != nil {
 		logger.LogError("[TradeLogic] Ошибка парсинга цены: %v", err)
 		return
 	}
+	logger.LogInfo("[TradeLogic] Текущая цена: %s для символа %s", currentPrice.String(), msg.Symbol)
 
-	// Получаем баланс в USDT
-	balance, err := h.service.GetUSDTBalance(ctx)
+	// Получаем параметры для ордера
+	buyPrice, sellPrice, orderSize, _, _, _, btcBalance, err := h.prepareOrderParams(ctx, msg.Symbol, currentPrice)
 	if err != nil {
-		logger.LogError("[TradeLogic] Ошибка получения баланса: %v", err)
+		logger.LogError("[TradeLogic] Ошибка подготовки параметров для ордера: %v", err)
 		return
 	}
-	logger.LogInfo("[TradeLogic] Текущий баланс USDT: %s", balance.String())
-
-	// Получаем волатильность
-	volatility, err := h.service.GetVolatility(ctx, msg.Symbol)
-	if err != nil {
-		logger.LogError("[TradeLogic] Ошибка получения волатильности: %v", err)
-		return
-	}
-	logger.LogInfo("[TradeLogic] Текущая волатильность для %s: %s", msg.Symbol, volatility.String())
-
-	// Получаем комиссию
-	fee, err := h.service.GetTradingFee(ctx, msg.Symbol)
-	if err != nil {
-		logger.LogError("[TradeLogic] Ошибка получения комиссии: %v", err)
-		return
-	}
-	logger.LogInfo("[TradeLogic] Текущая комиссия для %s: %s", msg.Symbol, fee.String())
-
-	// Параметры стратегии
-	entryOffsetPercent := decimal.NewFromFloat(0.1) // 0.1%
-	profitMultiplier := decimal.NewFromFloat(1.5)   // 1.5x волатильности
-	orderSizePercent := decimal.NewFromFloat(50.0)  // 50% от баланса
-
-	// Рассчитываем цены для ордеров
-	buyPrice, sellPrice, err := h.service.CalculateOrderPrices(
-		ctx,
-		msg.Symbol,
-		currentPrice,
-		volatility,
-		fee,
-		entryOffsetPercent,
-		profitMultiplier,
-	)
-	if err != nil {
-		logger.LogError("[TradeLogic] Ошибка расчета цен: %v", err)
-		return
-	}
-	logger.LogInfo("[TradeLogic] Рассчитанные цены: BuyPrice=%s, SellPrice=%s", buyPrice.String(), sellPrice.String())
-
-	// Рассчитываем размер ордера
-	orderSize, err := h.service.CalculateOrderSize(
-		ctx,
-		msg.Symbol,
-		balance,
-		orderSizePercent,
-		currentPrice,
-	)
-	if err != nil {
-		logger.LogError("[TradeLogic] Ошибка расчета размера ордера: %v", err)
-		return
-	}
-	// Округляем размер ордера до 6 знаков после запятой
-	orderSize = orderSize.Round(6)
-	logger.LogInfo("[TradeLogic] Рассчитанный размер ордера: %s", orderSize.String())
-
-	// Проверяем баланс BTC
-	btcBalance, err := h.service.GetBTCBalance(ctx)
-	if err != nil {
-		logger.LogError("[TradeLogic] Ошибка получения баланса BTC: %v", err)
-		return
-	}
-	logger.LogInfo("[TradeLogic] Текущий баланс BTC: %s", btcBalance.String())
 
 	// Создаем ордер на покупку
 	buyOrder, err := h.service.CreateLimitOrder(
@@ -202,13 +217,10 @@ func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg byb
 		orderSize.StringFixed(6),
 		buyPrice.StringFixed(2),
 	)
-	if err != nil {
-		logger.LogError("[TradeLogic] Ошибка создания ордера на покупку: %v", err)
-		return
-	}
 
-	logger.LogInfo("[TradeLogic] Создан ордер на покупку: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
-		msg.Symbol, buyPrice.StringFixed(2), orderSize.StringFixed(6), buyOrder.OrderID)
+	if err == nil {
+		h.service.SetBuyOrderID(buyOrder.OrderID)
+	}
 
 	// Проверяем, достаточно ли BTC для продажи
 	if btcBalance.GreaterThanOrEqual(orderSize) {
@@ -220,36 +232,21 @@ func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg byb
 			orderSize.StringFixed(6),
 			sellPrice.StringFixed(2),
 		)
-		if err != nil {
-			logger.LogError("[TradeLogic] Ошибка создания ордера на продажу: %v", err)
-			// Отменяем ордер на покупку
-			_, cancelErr := h.service.CancelOrder(ctx, msg.Symbol, buyOrder.OrderID)
-			if cancelErr != nil {
-				logger.LogError("[TradeLogic] Ошибка отмены ордера на покупку: %v", cancelErr)
-			}
-			return
+
+		if err == nil {
+			h.service.SetSellOrderID(sellOrder.OrderID)
 		}
-
-		logger.LogInfo("[TradeLogic] Создан ордер на продажу: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
-			msg.Symbol, sellPrice.StringFixed(2), orderSize.StringFixed(6), sellOrder.OrderID)
-
-		// Сохраняем ID ордера на продажу
-		h.service.SetSellOrderID(sellOrder.OrderID)
 	} else {
-		logger.LogInfo("[TradeLogic] Недостаточно BTC для создания ордера на продажу: баланс=%s, требуется=%s. Продолжаем только с ордером на покупку", 
+		logger.LogInfo("[TradeLogic] Недостаточно BTC для создания ордера на продажу: баланс=%s, требуется=%s. Продолжаем только с ордером на покупку",
 			btcBalance.String(), orderSize.String())
 	}
 
-	// Сохраняем информацию об активных ордерах
-	h.service.SetLastOrderID(buyOrder.OrderID)
 	h.service.SetOrderActive(true)
 }
 
 func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybit.OrderMessage) {
 	jsonStr, _ := json.Marshal(msg)
 	logger.LogDebug("handleOrderMessage: %s", string(jsonStr))
-
-	logger.LogInfo("[TradeLogic] handleOrderMessage: %s", string(jsonStr))
 
 	// Если ордер исполнен
 	if msg.OrderStatus == "Filled" {
@@ -263,41 +260,15 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 			return
 		}
 
-		// Получаем волатильность
-		volatility, err := h.service.GetVolatility(ctx, msg.Symbol)
+		// Получаем параметры для ордера
+		buyPrice, sellPrice, _, _, _, usdBalance, btcBalance, err := h.prepareOrderParams(ctx, msg.Symbol, currentPrice)
 		if err != nil {
-			logger.LogError("[TradeLogic] Ошибка получения волатильности: %v", err)
-			return
-		}
-
-		// Получаем комиссию
-		fee, err := h.service.GetTradingFee(ctx, msg.Symbol)
-		if err != nil {
-			logger.LogError("[TradeLogic] Ошибка получения комиссии: %v", err)
-			return
-		}
-
-		// Параметры стратегии
-		entryOffsetPercent := decimal.NewFromFloat(0.1) // 0.1%
-		profitMultiplier := decimal.NewFromFloat(1.5)   // 1.5x волатильности
-
-		// Рассчитываем цены для нового ордера
-		buyPrice, sellPrice, err := h.service.CalculateOrderPrices(
-			ctx,
-			msg.Symbol,
-			currentPrice,
-			volatility,
-			fee,
-			entryOffsetPercent,
-			profitMultiplier,
-		)
-		if err != nil {
-			logger.LogError("[TradeLogic] Ошибка расчета цен: %v", err)
+			logger.LogError("[TradeLogic] Ошибка подготовки параметров для ордера: %v", err)
 			return
 		}
 
 		// Если исполнился ордер на покупку
-		if msg.Side == "Buy" && msg.OrderID == h.service.GetLastOrderID() {
+		if msg.Side == "Buy" && msg.OrderID == h.service.GetBuyOrderID() {
 			// Отменяем ордер на продажу
 			_, err = h.service.CancelOrder(ctx, msg.Symbol, h.service.GetSellOrderID())
 			if err != nil {
@@ -314,21 +285,12 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 			}
 			qty = qty.Round(6)
 
-			// Проверяем баланс BTC
-			btcBalance, err := h.service.GetBTCBalance(ctx)
-			if err != nil {
-				logger.LogError("[TradeLogic] Ошибка получения баланса BTC: %v", err)
-				return
-			}
-			logger.LogInfo("[TradeLogic] Текущий баланс BTC: %s", btcBalance.String())
-
 			// Проверяем, достаточно ли BTC для продажи
 			if btcBalance.LessThan(qty) {
-				logger.LogError("[TradeLogic] Недостаточно BTC для продажи: баланс=%s, требуется=%s", 
+				logger.LogError("[TradeLogic] Недостаточно BTC для продажи: баланс=%s, требуется=%s",
 					btcBalance.String(), qty.String())
 				return
 			}
-
 			// Создаем новый ордер на продажу
 			sellOrder, err := h.service.CreateLimitOrder(
 				ctx,
@@ -337,16 +299,9 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 				qty.StringFixed(6),
 				sellPrice.StringFixed(2),
 			)
-			if err != nil {
-				logger.LogError("[TradeLogic] Ошибка создания ордера на продажу: %v", err)
-				return
+			if sellOrder != nil {
+				h.service.SetSellOrderID(sellOrder.OrderID)
 			}
-
-			logger.LogInfo("[TradeLogic] Создан новый ордер на продажу: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
-				msg.Symbol, sellPrice.StringFixed(2), qty.StringFixed(6), sellOrder.OrderID)
-
-			// Сохраняем ID нового ордера на продажу
-			h.service.SetSellOrderID(sellOrder.OrderID)
 		}
 		// Если исполнился ордер на продажу
 		if msg.Side == "Sell" && msg.OrderID == h.service.GetSellOrderID() {
@@ -366,22 +321,13 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 			}
 			qty = qty.Round(6)
 
-			// Проверяем баланс USDT
-			usdtBalance, err := h.service.GetUSDTBalance(ctx)
-			if err != nil {
-				logger.LogError("[TradeLogic] Ошибка получения баланса USDT: %v", err)
-				return
-			}
-			logger.LogInfo("[TradeLogic] Текущий баланс USDT: %s", usdtBalance.String())
-
 			// Рассчитываем необходимую сумму USDT для покупки
 			requiredUSDT := qty.Mul(buyPrice)
-			logger.LogInfo("[TradeLogic] Требуется USDT для покупки: %s", requiredUSDT.String())
 
 			// Проверяем, достаточно ли USDT для покупки
-			if usdtBalance.LessThan(requiredUSDT) {
-				logger.LogError("[TradeLogic] Недостаточно USDT для покупки: баланс=%s, требуется=%s", 
-					usdtBalance.String(), requiredUSDT.String())
+			if usdBalance.LessThan(requiredUSDT) {
+				logger.LogError("[TradeLogic] Недостаточно USDT для покупки: баланс=%s, требуется=%s",
+					usdBalance.String(), requiredUSDT.String())
 				return
 			}
 
@@ -393,16 +339,9 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 				qty.StringFixed(6),
 				buyPrice.StringFixed(2),
 			)
-			if err != nil {
-				logger.LogError("[TradeLogic] Ошибка создания ордера на покупку: %v", err)
-				return
+			if buyOrder != nil {
+				h.service.SetLastOrderID(buyOrder.OrderID)
 			}
-
-			logger.LogInfo("[TradeLogic] Создан новый ордер на покупку: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
-				msg.Symbol, buyPrice.StringFixed(2), qty.StringFixed(6), buyOrder.OrderID)
-
-			// Сохраняем ID нового ордера на покупку
-			h.service.SetLastOrderID(buyOrder.OrderID)
 		}
 	}
 }
@@ -420,7 +359,7 @@ func (h *BybitWebSocketHandler) HandlePrivateMessage(ctx context.Context, msg by
 		for _, order := range orders {
 			logger.LogInfo("Ордер: Symbol=%s, OrderID=%s, Status=%s",
 				order.Symbol, order.OrderID, order.OrderStatus)
-			
+
 			// Если ордер исполнен, обрабатываем его
 			if order.OrderStatus == "Filled" {
 				h.handleOrderMessage(ctx, order)

@@ -16,14 +16,15 @@ import (
 )
 
 type BybitService struct {
-	bybitClient bybit.Client
-	wsClient    *bybit.WebSocketClient
+	bybitClient     bybit.Client
+	wsClient        *bybit.WebSocketClient
 	privateWsClient *bybit.WebSocketClient
-	wsHandler   types.BybitWebSocketHandlerInterface
-	wsMutex     sync.Mutex
-	orderActive bool
-	lastOrderID string
-	sellOrderID string // ID ордера на продажу
+	wsHandler       types.BybitWebSocketHandlerInterface
+	wsMutex         sync.Mutex
+	orderActive     bool
+	lastOrderID     string
+	sellOrderID     string
+	buyOrderID      string
 }
 
 func NewBybitService(
@@ -144,7 +145,7 @@ func (s *BybitService) StartPrivateWebSocket(ctx context.Context) {
 				return
 			default:
 				s.wsMutex.Lock()
-				
+
 				// Проверяем, существует ли уже подключение
 				if s.privateWsClient != nil {
 					s.wsMutex.Unlock()
@@ -202,7 +203,7 @@ func (s *BybitService) StartPrivateWebSocket(ctx context.Context) {
 func (s *BybitService) closePrivateWebSockets() {
 	s.wsMutex.Lock()
 	defer s.wsMutex.Unlock()
-	
+
 	if s.privateWsClient != nil {
 		s.privateWsClient.Close()
 		s.privateWsClient = nil
@@ -211,7 +212,24 @@ func (s *BybitService) closePrivateWebSockets() {
 }
 
 func (s *BybitService) CreateLimitOrder(ctx context.Context, symbol string, side string, qty string, price string) (*bybit.BybitOrderResponse, error) {
-	return s.bybitClient.CreateOrder(ctx, symbol, side, "Limit", qty, &price, "GTC", nil)
+	order, err := s.bybitClient.CreateOrder(ctx, symbol, side, "Limit", qty, &price, "GTC", nil)
+
+	var sSide string
+	if side == "Buy" {
+		sSide = "покупку"
+	} else {
+		sSide = "продажу"
+	}
+
+	if err != nil {
+		logger.LogError("[TradeLogic] Ошибка создания ордера на %s: %v", sSide, err)
+		return nil, err
+	}
+
+	logger.LogInfo("[TradeLogic] Создан ордер на %s: Symbol=%s, Price=%s, Size=%s, OrderID=%s",
+		sSide, symbol, price, qty, order.OrderID)
+
+	return order, err
 }
 
 func (s *BybitService) CancelOrder(ctx context.Context, symbol string, orderID string) (*bybit.BybitOrderResponse, error) {
@@ -357,7 +375,7 @@ func (s *BybitService) CalculateOrderPrices(
 	// Используем абсолютную волатильность (в USDT)
 	volatilityUSDT := currentPrice.Mul(volatility).Div(decimal.NewFromInt(100))
 	profitTarget := volatilityUSDT.Mul(profitMultiplier)
-	
+
 	// Добавляем комиссию к целевой прибыли
 	totalProfit := profitTarget.Add(fee.Mul(decimal.NewFromInt(2))) // Умножаем на 2, так как комиссия берется дважды
 	sellPrice = buyPrice.Add(totalProfit)
@@ -379,10 +397,10 @@ func (s *BybitService) CalculateOrderSize(
 ) (decimal.Decimal, error) {
 	// Рассчитываем размер ордера в USDT
 	orderSizeUSDT := balance.Mul(percent).Div(decimal.NewFromInt(100))
-	
+
 	// Рассчитываем размер ордера в BTC
 	orderSize := orderSizeUSDT.Div(currentPrice)
-	
+
 	// Проверяем минимальный размер ордера
 	minOrderSize := decimal.NewFromFloat(0.0001) // Минимальный размер ордера для BTC
 	if orderSize.LessThan(minOrderSize) {
@@ -398,4 +416,12 @@ func (s *BybitService) SetSellOrderID(orderID string) {
 
 func (s *BybitService) GetSellOrderID() string {
 	return s.sellOrderID
+}
+
+func (s *BybitService) SetBuyOrderID(orderID string) {
+	s.buyOrderID = orderID
+}
+
+func (s *BybitService) GetBuyOrderID() string {
+	return s.buyOrderID
 }

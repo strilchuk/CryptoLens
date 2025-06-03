@@ -19,7 +19,7 @@ type BybitServiceInterface interface {
 	SetLastOrderID(orderID string)
 	GetLastOrderID() string
 	SetWebSocketHandler(handler BybitWebSocketHandlerInterface)
-	
+
 	// Новые методы для стратегии
 	GetUSDTBalance(ctx context.Context) (decimal.Decimal, error)
 	GetBTCBalance(ctx context.Context) (decimal.Decimal, error)
@@ -41,10 +41,11 @@ type BybitServiceInterface interface {
 		percent decimal.Decimal,
 		currentPrice decimal.Decimal,
 	) (decimal.Decimal, error)
-	
-	// Методы для работы с ID ордера на продажу
+
 	SetSellOrderID(orderID string)
+	SetBuyOrderID(orderID string)
 	GetSellOrderID() string
+	GetBuyOrderID() string
 }
 
 type BybitWebSocketHandlerInterface interface {
