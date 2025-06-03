@@ -85,4 +85,10 @@ type Client interface {
 		symbol *string,
 		baseCoin *string,
 	) (*BybitFeeRateResponse, error)
+
+	// GetOrderInfo получает информацию об ордере
+	GetOrderInfo(
+		ctx context.Context,
+		orderID string,
+	) (*BybitOrderInfoResponse, error)
 }

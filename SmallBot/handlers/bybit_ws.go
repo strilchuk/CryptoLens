@@ -14,24 +14,27 @@ import (
 )
 
 const (
-	EntryOffsetPercent = 0.05 // 0.05%
+	EntryOffsetPercent = 0.01 // 0.05%
 	ProfitMultiplier   = 1.5  // 1.5x волатильности
 	OrderSizePercent   = 20.0 // 80% от баланса
-	BuyOrderTimeout    = 5 * time.Minute
+	BuyOrderTimeout    = 1 * time.Minute
+	SellOrderTimeout   = 1 * time.Minute
 )
 
 type BybitWebSocketHandler struct {
-	msgChan        chan *bybit.WebSocketMessage
-	service        types.BybitServiceInterface
-	buyOrderTimers map[string]time.Time // orderID -> creation time
-	mu             sync.Mutex
+	msgChan         chan *bybit.WebSocketMessage
+	service         types.BybitServiceInterface
+	buyOrderTimers  map[string]time.Time // orderID -> creation time
+	sellOrderTimers map[string]time.Time // orderID -> creation time
+	mu              sync.Mutex
 }
 
 func NewBybitWebSocketHandler(service types.BybitServiceInterface) *BybitWebSocketHandler {
 	handler := &BybitWebSocketHandler{
-		msgChan:        make(chan *bybit.WebSocketMessage, 100),
-		service:        service,
-		buyOrderTimers: make(map[string]time.Time),
+		msgChan:         make(chan *bybit.WebSocketMessage, 100),
+		service:         service,
+		buyOrderTimers:  make(map[string]time.Time),
+		sellOrderTimers: make(map[string]time.Time),
 	}
 	go handler.processMessages()
 	go handler.monitorChannel()
@@ -242,6 +245,7 @@ func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg byb
 		)
 		if err == nil {
 			h.service.SetSellOrderID(sellOrder.OrderID)
+			h.addSellOrderTimer(sellOrder.OrderID)
 		}
 	} else {
 		logger.LogInfo("[TradeLogic] Недостаточно BTC для создания ордера на продажу: баланс=%s, требуется=%s. Продолжаем только с ордером на покупку",
@@ -350,6 +354,7 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 			}
 		}
 		h.removeBuyOrderTimer(msg.OrderID)
+		h.removeSellOrderTimer(msg.OrderID)
 	}
 
 	// Если ордер отменён
@@ -358,14 +363,34 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 
 		if msg.Side == "Buy" {
 			h.service.SetBuyOrderID("")
+			h.removeBuyOrderTimer(msg.OrderID)
 		} else {
 			h.service.SetSellOrderID("")
+			h.removeSellOrderTimer(msg.OrderID)
 		}
 
 		// Проверяем, есть ли ещё активные ордера (buy/sell)
 		buyID := h.service.GetBuyOrderID()
 		sellID := h.service.GetSellOrderID()
-		if (buyID == "") && (sellID == "") {
+
+		buyOrderIsExists := false
+		if buyID != "" {
+			var err error
+			buyOrderIsExists, err = h.service.IsOrderExists(ctx, buyID)
+			if err != nil {
+				buyOrderIsExists = false
+			}
+		}
+
+		sellOrderIsExists := false
+		if sellID != "" {
+			var err error
+			sellOrderIsExists, err = h.service.IsOrderExists(ctx, sellID)
+			if err != nil {
+				buyOrderIsExists = false
+			}
+		}
+		if (!buyOrderIsExists) && (!sellOrderIsExists) {
 			h.service.SetOrderActive(false)
 			logger.LogInfo("[TradeLogic] Нет активных ордеров, SetOrderActive(false)")
 		} else {
@@ -442,6 +467,21 @@ func (h *BybitWebSocketHandler) removeBuyOrderTimer(orderID string) {
 	delete(h.buyOrderTimers, orderID)
 }
 
+// Добавлять sell-ордер в таймер
+func (h *BybitWebSocketHandler) addSellOrderTimer(orderID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.sellOrderTimers[orderID] = time.Now()
+}
+
+// Удалять buy-ордер из таймера
+func (h *BybitWebSocketHandler) removeSellOrderTimer(orderID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.sellOrderTimers, orderID)
+}
+
 // Проверка buy-ордеров на таймаут
 func (h *BybitWebSocketHandler) buyOrderTimeoutWatcher() {
 	ticker := time.NewTicker(1 * time.Minute)
@@ -450,13 +490,38 @@ func (h *BybitWebSocketHandler) buyOrderTimeoutWatcher() {
 		time.Sleep(1 * time.Second)
 		h.mu.Lock()
 		//defer h.mu.Unlock() // ???
+
+		ctx := context.Background()
+		buyID := h.service.GetBuyOrderID()
+		sellID := h.service.GetSellOrderID()
+
+		sellOrderIsExists := false
+		if sellID != "" {
+			var err error
+			sellOrderIsExists, err = h.service.IsOrderExists(ctx, buyID)
+			if err != nil {
+				sellOrderIsExists = false
+			}
+		}
+
+		buyOrderIsExists := false
+		if buyID != "" {
+			var err error
+			buyOrderIsExists, err = h.service.IsOrderExists(ctx, buyID)
+			if err != nil {
+				buyOrderIsExists = false
+			}
+		}
+
+		needToSetActiveFalse := false
+
 		for orderID, created := range h.buyOrderTimers {
-			if time.Since(created) > BuyOrderTimeout && h.service.GetSellOrderID() == "" {
+			if time.Since(created) > BuyOrderTimeout && buyOrderIsExists && !sellOrderIsExists {
 				// Отменяем buy-ордер
-				ctx := context.Background()
 				_, err := h.service.CancelOrder(ctx, env.GetSymbol(), orderID)
 				if err != nil {
-					logger.LogError("[TradeLogic] Не удалось отменить buy-ордер по таймауту: %v", err)
+					logger.LogError("[TradeLogic] Не удалось отменить buy-ордер по таймауту orderID=%s: %v", orderID, err)
+					delete(h.buyOrderTimers, orderID)
 					continue
 				}
 				logger.LogInfo("[TradeLogic] Buy-ордер %s отменён по таймауту", orderID)
@@ -464,8 +529,30 @@ func (h *BybitWebSocketHandler) buyOrderTimeoutWatcher() {
 				// Удаляем старый orderID из таймера
 				//h.removeBuyOrderTimer(orderID)
 				delete(h.buyOrderTimers, orderID)
-				h.service.SetOrderActive(false)
+				needToSetActiveFalse = true
 			}
+		}
+
+		for orderID, created := range h.sellOrderTimers {
+			if time.Since(created) > SellOrderTimeout && !buyOrderIsExists && sellOrderIsExists {
+				// Отменяем sell-ордер
+
+				_, err := h.service.CancelOrder(ctx, env.GetSymbol(), orderID)
+				if err != nil {
+					logger.LogError("[TradeLogic] Не удалось отменить sell-ордер по таймауту orderID=%s: %v", orderID, err)
+					delete(h.sellOrderTimers, orderID)
+					continue
+				}
+				logger.LogInfo("[TradeLogic] Sell-ордер %s отменён по таймауту", orderID)
+
+				// Удаляем старый orderID из таймера
+				//h.removeBuyOrderTimer(orderID)
+				delete(h.sellOrderTimers, orderID)
+				needToSetActiveFalse = true
+			}
+		}
+		if needToSetActiveFalse {
+			h.service.SetOrderActive(false)
 		}
 		h.mu.Unlock()
 		time.Sleep(10 * time.Second)

@@ -46,6 +46,7 @@ type BybitServiceInterface interface {
 	SetBuyOrderID(orderID string)
 	GetSellOrderID() string
 	GetBuyOrderID() string
+	IsOrderExists(ctx context.Context, orderID string) (bool, error)
 }
 
 type BybitWebSocketHandlerInterface interface {

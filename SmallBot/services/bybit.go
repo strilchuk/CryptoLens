@@ -425,3 +425,23 @@ func (s *BybitService) SetBuyOrderID(orderID string) {
 func (s *BybitService) GetBuyOrderID() string {
 	return s.buyOrderID
 }
+
+func (s *BybitService) IsOrderExists(ctx context.Context, orderID string) (bool, error) {
+	if orderID == "" {
+		return false, nil
+	}
+
+	orderInfo, err := s.bybitClient.GetOrderInfo(ctx, orderID)
+	if err != nil {
+		return false, fmt.Errorf("ошибка получения информации об ордере: %w", err)
+	}
+
+	// Проверяем, что есть хотя бы один ордер в списке
+	if len(orderInfo.List) == 0 {
+		return false, nil
+	}
+
+	// Проверяем статус ордера
+	order := orderInfo.List[0]
+	return order.OrderStatus == "New", nil
+}

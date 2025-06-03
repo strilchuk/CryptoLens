@@ -716,6 +716,58 @@ func (c *client) GetFeeRate(
 	return &result, nil
 }
 
+// получает информацию об ордере
+func (c *client) GetOrderInfo(
+	ctx context.Context,
+	orderID string,
+) (*BybitOrderInfoResponse, error) {
+	timestamp := strconv.FormatInt(time.Now().UnixMilli(), 10)
+
+	queryParams := url.Values{}
+	queryParams.Set("category", "spot")
+	queryParams.Set("orderId", orderID)
+	queryParams.Set("limit", "1000")
+
+	signature := c.generateSignature(timestamp, queryParams.Encode())
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		fmt.Sprintf("%s/v5/order/realtime?%s", c.baseURL, queryParams.Encode()), nil)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
+	}
+
+	req.Header.Set("X-BAPI-API-KEY", env.GetBybitApiToken())
+	req.Header.Set("X-BAPI-TIMESTAMP", timestamp)
+	req.Header.Set("X-BAPI-RECV-WINDOW", strconv.Itoa(c.recvWindow))
+	req.Header.Set("X-BAPI-SIGN", signature)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var bybitResp BybitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
+	}
+
+	if !bybitResp.IsSuccess() {
+		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
+	}
+
+	resultBytes, err := json.Marshal(bybitResp.Result)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
+	}
+	var result BybitOrderInfoResponse
+	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
+	}
+	return &result, nil
+}
+
 // генерирует подпись для запроса
 func (c *client) generateSignature(timestamp string, queryParams string) string {
 	paramStr := timestamp + env.GetBybitApiToken() + strconv.Itoa(c.recvWindow) + queryParams
