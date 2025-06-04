@@ -502,27 +502,48 @@ func (c *client) CancelOrder(
 	req.Header.Set("X-BAPI-SIGN", signature)
 	req.Header.Set("Content-Type", "application/json")
 
+	// Формируем curl-запрос для логирования
+	curlCmd := fmt.Sprintf(
+		"curl -X POST '%s/v5/order/cancel' \\\n"+
+			"  -H 'X-BAPI-API-KEY: %s' \\\n"+
+			"  -H 'X-BAPI-TIMESTAMP: %s' \\\n"+
+			"  -H 'X-BAPI-RECV-WINDOW: %d' \\\n"+
+			"  -H 'X-BAPI-SIGN: %s' \\\n"+
+			"  -H 'Content-Type: application/json' \\\n  -d '%s'",
+		c.baseURL,
+		env.GetBybitApiToken(),
+		timestamp,
+		c.recvWindow,
+		signature,
+		string(payloadBytes),
+	)
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		logger.LogError("Curl запрос: %s", err, curlCmd)
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		logger.LogError("Curl запрос: %s", err, curlCmd)
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
+		logger.LogError("Curl запрос: %s", err, curlCmd)
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		logger.LogError("Curl запрос: %s", err, curlCmd)
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	var result BybitOrderResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		logger.LogError("Curl запрос: %s", err, curlCmd)
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 	return &result, nil
