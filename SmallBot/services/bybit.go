@@ -4,6 +4,7 @@ import (
 	"SmallBot/env"
 	"SmallBot/integration/bybit"
 	"SmallBot/logger"
+	"SmallBot/metrics"
 	"SmallBot/types"
 	"context"
 	"fmt"
@@ -94,7 +95,7 @@ func getPrecision(s string) int {
 	return len(parts[1])
 }
 
-// запускает WebSocket-соединение и подписку на каналы
+// StartWebSocket запускает WebSocket-соединение и подписку на каналы
 func (s *BybitService) StartWebSocket(ctx context.Context) {
 	go func() {
 		for {
@@ -133,6 +134,42 @@ func (s *BybitService) StartWebSocket(ctx context.Context) {
 			}
 		}
 	}()
+	go s.updateMetricsPeriodically(ctx)
+}
+
+func (s *BybitService) updateMetricsPeriodically(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Обновляем баланс
+			balance, err := s.GetUSDTBalance(ctx)
+			if err != nil {
+				logger.LogError("Failed to get balance for metrics: %v", err)
+				continue
+			}
+
+			// Считаем активные ордера
+			activeOrders := 0
+			if s.GetBuyOrderID() != "" {
+				activeOrders++
+			}
+			if s.GetSellOrderID() != "" {
+				activeOrders++
+			}
+
+			// Обновляем метрики
+			metrics.GetInstance().UpdateSystemState(
+				activeOrders,
+				"", // Цена будет обновляться из тикера
+				balance,
+			)
+		}
+	}
 }
 
 // StartPrivateWebSocket запускает приватные WebSocket-соединения для активных аккаунтов

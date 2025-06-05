@@ -3,6 +3,7 @@ package bybit
 import (
 	"SmallBot/env"
 	"SmallBot/logger"
+	"SmallBot/metrics"
 	"bytes"
 	"context"
 	"crypto/hmac"
@@ -48,6 +49,7 @@ func (c *client) GetWalletBalance(ctx context.Context) (*BybitWalletBalance, err
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/v5/account/wallet-balance?%s", c.baseURL, queryParams), nil)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
@@ -69,6 +71,7 @@ func (c *client) GetWalletBalance(ctx context.Context) (*BybitWalletBalance, err
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
@@ -76,6 +79,7 @@ func (c *client) GetWalletBalance(ctx context.Context) (*BybitWalletBalance, err
 	// Читаем тело ответа
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка чтения тела ответа: %w", err)
 	}
 
@@ -84,16 +88,19 @@ func (c *client) GetWalletBalance(ctx context.Context) (*BybitWalletBalance, err
 
 	var bybitResp BybitResponse
 	if err := json.Unmarshal(body, &bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w\nТело ответа: %s", err, string(body))
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	// Логируем ответ для отладки
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	logger.LogDebug("Bybit API Response: %s", string(resultBytes))
@@ -101,17 +108,20 @@ func (c *client) GetWalletBalance(ctx context.Context) (*BybitWalletBalance, err
 	// Преобразуем result в map[string]interface{}
 	resultMap, ok := bybitResp.Result.(map[string]interface{})
 	if !ok {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("неожиданный формат ответа: %v", bybitResp.Result)
 	}
 
 	// Преобразуем map обратно в JSON
 	resultBytes, err = json.Marshal(resultMap)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 
 	var result BybitWalletBalance
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 
@@ -126,6 +136,7 @@ func (c *client) GetInstruments(ctx context.Context, category string) (*BybitIns
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/v5/market/instruments-info?%s", c.baseURL, queryParams.Encode()), nil)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
@@ -137,6 +148,7 @@ func (c *client) GetInstruments(ctx context.Context, category string) (*BybitIns
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
@@ -144,6 +156,7 @@ func (c *client) GetInstruments(ctx context.Context, category string) (*BybitIns
 	// Читаем тело ответа
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка чтения тела ответа: %w", err)
 	}
 
@@ -152,27 +165,32 @@ func (c *client) GetInstruments(ctx context.Context, category string) (*BybitIns
 
 	var bybitResp BybitResponse
 	if err := json.Unmarshal(body, &bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w\nТело ответа: %s", err, string(body))
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	// Преобразуем result в map[string]interface{}
 	resultMap, ok := bybitResp.Result.(map[string]interface{})
 	if !ok {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("неожиданный формат ответа: %v", bybitResp.Result)
 	}
 
 	// Преобразуем map обратно в JSON
 	resultBytes, err := json.Marshal(resultMap)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 
 	var result BybitInstrumentsResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 
@@ -190,30 +208,36 @@ func (c *client) GetTickers(ctx context.Context, category string, symbol *string
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/v5/market/tickers?%s", c.baseURL, queryParams.Encode()), nil)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	var result BybitTickersResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 
@@ -246,30 +270,36 @@ func (c *client) GetKlines(
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/v5/market/kline?%s", c.baseURL, queryParams.Encode()), nil)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	var result BybitKlinesResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 
@@ -296,30 +326,36 @@ func (c *client) GetTrades(
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/v5/market/recent-trade?%s", c.baseURL, queryParams.Encode()), nil)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	var result BybitTradesResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 
@@ -357,6 +393,7 @@ func (c *client) CreateOrder(
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга payload: %w", err)
 	}
 
@@ -365,6 +402,7 @@ func (c *client) CreateOrder(
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		fmt.Sprintf("%s/v5/order/create", c.baseURL), bytes.NewBuffer(payloadBytes))
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
@@ -376,26 +414,31 @@ func (c *client) CreateOrder(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	// Исправление: маршалим Result в JSON, затем размаршалим в BybitOrderResponse
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	var result BybitOrderResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 	return &result, nil
@@ -426,6 +469,7 @@ func (c *client) AmendOrder(
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга payload: %w", err)
 	}
 
@@ -434,6 +478,7 @@ func (c *client) AmendOrder(
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		fmt.Sprintf("%s/v5/order/amend", c.baseURL), bytes.NewBuffer(payloadBytes))
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
@@ -445,25 +490,30 @@ func (c *client) AmendOrder(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	var result BybitOrderResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 	return &result, nil
@@ -485,6 +535,7 @@ func (c *client) CancelOrder(
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга payload: %w", err)
 	}
 
@@ -493,6 +544,7 @@ func (c *client) CancelOrder(
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		fmt.Sprintf("%s/v5/order/cancel", c.baseURL), bytes.NewBuffer(payloadBytes))
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
@@ -521,6 +573,7 @@ func (c *client) CancelOrder(
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		logger.LogError("Curl запрос: %s", err, curlCmd)
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
@@ -528,22 +581,26 @@ func (c *client) CancelOrder(
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
 		logger.LogError("Curl запрос: %s", err, curlCmd)
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
 		logger.LogError("Curl запрос: %s", err, curlCmd)
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
 		logger.LogError("Curl запрос: %s", err, curlCmd)
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	var result BybitOrderResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
 		logger.LogError("Curl запрос: %s", err, curlCmd)
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 	return &result, nil
@@ -563,6 +620,7 @@ func (c *client) CancelAllOrders(
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга payload: %w", err)
 	}
 
@@ -571,6 +629,7 @@ func (c *client) CancelAllOrders(
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		fmt.Sprintf("%s/v5/order/cancel-all", c.baseURL), bytes.NewBuffer(payloadBytes))
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
@@ -582,25 +641,30 @@ func (c *client) CancelAllOrders(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	var result BybitOrderResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 	return &result, nil
@@ -628,6 +692,7 @@ func (c *client) GetOpenOrders(
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/v5/order/realtime?%s", c.baseURL, queryParams.Encode()), nil)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
@@ -639,25 +704,30 @@ func (c *client) GetOpenOrders(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	var result BybitOrderListResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 	return &result, nil
@@ -686,6 +756,7 @@ func (c *client) GetFeeRate(
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/v5/account/fee-rate?%s", c.baseURL, queryParams.Encode()), nil)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
@@ -697,22 +768,26 @@ func (c *client) GetFeeRate(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	// Логируем ответ для отладки
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	log.Printf("Bybit API Response: %s", string(resultBytes))
@@ -720,17 +795,20 @@ func (c *client) GetFeeRate(
 	// Преобразуем result в map[string]interface{}
 	resultMap, ok := bybitResp.Result.(map[string]interface{})
 	if !ok {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("неожиданный формат ответа: %v", bybitResp.Result)
 	}
 
 	// Преобразуем map обратно в JSON
 	resultBytes, err = json.Marshal(resultMap)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 
 	var result BybitFeeRateResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 
@@ -754,6 +832,7 @@ func (c *client) GetOrderInfo(
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/v5/order/realtime?%s", c.baseURL, queryParams.Encode()), nil)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
@@ -765,25 +844,30 @@ func (c *client) GetOrderInfo(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка выполнения запроса: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var bybitResp BybitResponse
 	if err := json.NewDecoder(resp.Body).Decode(&bybitResp); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования ответа: %w", err)
 	}
 
 	if !bybitResp.IsSuccess() {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка API: %s", bybitResp.RetMsg)
 	}
 
 	resultBytes, err := json.Marshal(bybitResp.Result)
 	if err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка маршалинга результата: %w", err)
 	}
 	var result BybitOrderInfoResponse
 	if err := json.Unmarshal(resultBytes, &result); err != nil {
+		metrics.GetInstance().IncrementAPIError()
 		return nil, fmt.Errorf("ошибка декодирования результата: %w", err)
 	}
 	return &result, nil

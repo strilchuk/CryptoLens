@@ -4,6 +4,7 @@ import (
 	"SmallBot/env"
 	"SmallBot/integration/bybit"
 	"SmallBot/logger"
+	"SmallBot/metrics"
 	"SmallBot/types"
 	"context"
 	"encoding/json"
@@ -101,8 +102,14 @@ func (h *BybitWebSocketHandler) processMessage(ctx context.Context, msg *bybit.W
 }
 
 func (h *BybitWebSocketHandler) HandleMessage(ctx context.Context, msg bybit.WebSocketMessage) {
+	receivedAt := time.Now()
+
 	select {
 	case h.msgChan <- &msg:
+		// Вычисляем задержку
+		msgTime := time.Unix(0, msg.Ts*int64(time.Millisecond))
+		latency := receivedAt.Sub(msgTime)
+		metrics.GetInstance().UpdateWebSocketLatency(latency)
 	default:
 		h.msgChan <- &msg
 	}
@@ -231,6 +238,9 @@ func (h *BybitWebSocketHandler) handleTickerMessage(ctx context.Context, msg byb
 	if err == nil {
 		h.service.SetBuyOrderID(buyOrder.OrderID)
 		h.addBuyOrderTimer(buyOrder.OrderID)
+		metrics.GetInstance().IncrementOrdersCreated()
+	} else {
+		metrics.GetInstance().IncrementError("create_buy_order")
 	}
 
 	// Проверяем, достаточно ли BTC для продажи
@@ -260,6 +270,17 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 
 	// Если ордер исполнен
 	if msg.OrderStatus == "Filled" {
+		metrics.GetInstance().IncrementOrdersFilled()
+
+		qty, _ := decimal.NewFromString(msg.Qty)
+		price, _ := decimal.NewFromString(msg.Price)
+		volume := qty.Mul(price)
+		metrics.GetInstance().AddVolume(volume)
+
+		// Примерная комиссия (нужно получать из сообщения)
+		fee := volume.Mul(decimal.NewFromFloat(0.001)) // 0.1% //TODO рассчитать реальную комиссию
+		metrics.GetInstance().AddFees(fee)
+
 		logger.LogInfo("[TradeLogic] Ордер исполнен: Symbol=%s, Side=%s, Price=%s, Size=%s, OrderID=%s",
 			msg.Symbol, msg.Side, msg.Price, msg.Qty, msg.OrderID)
 
@@ -286,7 +307,7 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 				if err != nil {
 					logger.LogError("[TradeLogic] Ошибка отмены ордера на продажу: %v", err)
 				} else {
-					logger.LogInfo("[TradeLogic] Ордер на продажу успешно отменен")
+					logger.LogInfo("[TradeLogic] Ордер на продажу успешно отменен OrderId=%s", sellOrderID)
 				}
 			} else {
 				logger.LogWarn("[TradeLogic] SellOrderID пуст, нечего отменять")
@@ -328,7 +349,7 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 				if err != nil {
 					logger.LogError("[TradeLogic] Ошибка отмены ордера на покупку: %v", err)
 				} else {
-					logger.LogInfo("[TradeLogic] Ордер на покупку успешно отменен")
+					logger.LogInfo("[TradeLogic] Ордер на покупку успешно отменен OrderId=%s", buyOrderID)
 				}
 			} else {
 				logger.LogWarn("[TradeLogic] BuyOrderID пуст, нечего отменять")
@@ -371,6 +392,7 @@ func (h *BybitWebSocketHandler) handleOrderMessage(ctx context.Context, msg bybi
 
 	// Если ордер отменён
 	if msg.OrderStatus == "Cancelled" {
+		metrics.GetInstance().IncrementOrdersCancelled()
 		logger.LogInfo("[TradeLogic] Ордер отменён: Symbol=%s, Side=%s, OrderID=%s", msg.Symbol, msg.Side, msg.OrderID)
 
 		if msg.Side == "Buy" {
@@ -541,6 +563,7 @@ func (h *BybitWebSocketHandler) buyOrderTimeoutWatcher() {
 
 		for orderID, created := range h.buyOrderTimers {
 			if time.Since(created) > BuyOrderTimeout && buyOrderIsExists && !sellOrderIsExists {
+				metrics.GetInstance().IncrementOrdersTimeout()
 				// Отменяем buy-ордер
 				if orderID != "" {
 					_, err := h.service.CancelOrder(ctx, env.GetSymbol(), orderID)
@@ -560,6 +583,7 @@ func (h *BybitWebSocketHandler) buyOrderTimeoutWatcher() {
 
 		for orderID, created := range h.sellOrderTimers {
 			if time.Since(created) > SellOrderTimeout && !buyOrderIsExists && sellOrderIsExists {
+				metrics.GetInstance().IncrementOrdersTimeout()
 				// Отменяем sell-ордер
 				if orderID != "" {
 					_, err := h.service.CancelOrder(ctx, env.GetSymbol(), orderID)
