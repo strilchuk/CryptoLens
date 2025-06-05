@@ -8,6 +8,7 @@ import (
 	"SmallBot/services"
 	"SmallBot/types"
 	"context"
+	"fmt"
 	"strconv"
 )
 
@@ -31,26 +32,33 @@ func NewContainer() *Container {
 	wsHandler := handlers.NewBybitWebSocketHandler(bybitService)
 	bybitService.SetWebSocketHandler(wsHandler)
 
-	// Отменяем все ордера при старте
-	ctx := context.Background()
-	logger.LogInfo("Отмена всех ордеров при старте...")
-
-	// Отменяем ордера для символа
 	symbol := env.GetSymbol()
-	_, err := bybitService.CancelAllOrders(ctx, symbol)
-	if err != nil {
-		logger.LogError("Ошибка при отмене ордеров %s: %v", symbol, err)
-	} else {
-		logger.LogInfo("Все ордера %s успешно отменены", symbol)
-	}
+	ctx := context.Background()
+	if env.GetCancelOrdersOnStart() {
+		// Отменяем все ордера при старте
+		logger.LogWarn("⚠️  Отмена всех ордеров при старте включена!")
 
-	// Отменяем ордера для ETHUSDT
-	//_, err = bybitService.CancelAllOrders(ctx, "ETHUSDT")
-	//if err != nil {
-	//	logger.LogError("Ошибка при отмене ордеров ETHUSDT: %v", err)
-	//} else {
-	//	logger.LogInfo("Все ордера ETHUSDT успешно отменены")
-	//}
+		// Отменяем ордера
+		cancelled, err := bybitService.CancelAllOrders(ctx, symbol)
+		if err != nil {
+			logger.LogError("Ошибка при отмене ордеров %s: %v", symbol, err)
+		} else {
+			logger.LogInfo("Все ордера %s успешно отменены. Отменено: %v", symbol, cancelled)
+		}
+	} else {
+		logger.LogInfo("✓ Отмена ордеров при старте отключена. Существующие ордера сохранены.")
+		orders, err := bybitService.GetOpenOrders(ctx, symbol, nil, 50)
+
+		if err != nil {
+			logger.LogError("Не удалось получить список активных ордеров: %v", err)
+		} else if len(orders.List) > 0 {
+			logger.LogWarn("⚠️  Обнаружено %d активных ордеров для %s", len(orders.List), symbol)
+			for _, order := range orders.List {
+				logger.LogInfo("  - OrderID: %s, Side: %s, Price: %s, Qty: %s, Status: %s",
+					order.OrderID, order.Side, order.Price, order.Qty, order.OrderStatus)
+			}
+		}
+	}
 
 	return &Container{
 		BybitClient:  bybitClient,
@@ -65,25 +73,23 @@ func (c *Container) StartBackgroundTasks(ctx context.Context) {
 }
 
 func (c *Container) Close() error {
-	ctx := context.Background()
-	logger.LogInfo("Отмена всех ордеров при завершении...")
+	if env.GetCancelOrdersOnShutdown() {
+		ctx := context.Background()
 
-	// Отменяем ордера для символа
-	symbol := env.GetSymbol()
-	_, err := c.BybitService.CancelAllOrders(ctx, symbol)
-	if err != nil {
-		logger.LogError("Ошибка при отмене ордеров %s: %v", symbol, err)
+		logger.LogInfo("🛑 Отмена всех ордеров при завершении...")
+
+		symbol := env.GetSymbol()
+		cancelled, err := c.BybitService.CancelAllOrders(ctx, symbol)
+		if err != nil {
+			logger.LogError("Ошибка при отмене ордеров %s: %v", symbol, err)
+			return fmt.Errorf("failed to cancel orders: %w", err)
+		}
+
+		logger.LogInfo("✓ Все ордера %s успешно отменены при завершении. Отменено: %v", symbol, cancelled)
+
 	} else {
-		logger.LogInfo("Все ордера %s успешно отменены", symbol)
+		logger.LogWarn("⚠️  Отмена ордеров при завершении отключена. Ордера остаются активными!")
 	}
-
-	//// Отменяем ордера для ETHUSDT
-	//_, err = c.BybitService.CancelAllOrders(ctx, "ETHUSDT")
-	//if err != nil {
-	//	logger.LogError("Ошибка при отмене ордеров ETHUSDT: %v", err)
-	//} else {
-	//	logger.LogInfo("Все ордера ETHUSDT успешно отменены")
-	//}
 
 	return nil
 }

@@ -19,6 +19,7 @@ type BybitServiceInterface interface {
 	SetLastOrderID(orderID string)
 	GetLastOrderID() string
 	SetWebSocketHandler(handler BybitWebSocketHandlerInterface)
+	GetOpenOrders(ctx context.Context, symbol string, orderID *string, limit int) (*bybit.BybitOrderListResponse, error)
 
 	// Новые методы для стратегии
 	GetUSDTBalance(ctx context.Context) (decimal.Decimal, error)

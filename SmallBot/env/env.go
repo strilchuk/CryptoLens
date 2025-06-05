@@ -64,3 +64,20 @@ func GetDebug() string {
 func GetSymbol() string {
 	return os.Getenv("SYMBOL")
 }
+
+func GetCancelOrdersOnStart() bool {
+	value := os.Getenv("CANCEL_ORDERS_ON_START")
+	if value == "" {
+		return false
+	}
+	return value == "true"
+}
+
+func GetCancelOrdersOnShutdown() bool {
+	// По умолчанию true для безопасности
+	value := os.Getenv("CANCEL_ORDERS_ON_SHUTDOWN")
+	if value == "" {
+		return true
+	}
+	return value == "true"
+}

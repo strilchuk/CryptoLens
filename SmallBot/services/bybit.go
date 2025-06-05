@@ -240,6 +240,12 @@ func (s *BybitService) CancelAllOrders(ctx context.Context, symbol string) (*byb
 	return s.bybitClient.CancelAllOrders(ctx, symbol)
 }
 
+func (s *BybitService) GetOpenOrders(
+	ctx context.Context, symbol string, orderID *string, limit int,
+) (*bybit.BybitOrderListResponse, error) {
+	return s.bybitClient.GetOpenOrders(ctx, symbol, orderID, limit)
+}
+
 func (s *BybitService) IsOrderActive() bool {
 	return s.orderActive
 }
